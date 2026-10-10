@@ -10,7 +10,7 @@ const ALLOWED = [
 const PASS_PARAMS = ["query", "year", "include_image_language", "language", "page"];
 
 export default async function handler(req, res) {
-  const key = process.env.TMDB_API_KEY;
+  const key = (process.env.TMDB_API_KEY || process.env.TMDB || "").trim();
   if (!key) return res.status(500).json({ error: "TMDB_API_KEY isn't set in Vercel yet." });
 
   const path = String(req.query.path || "");
