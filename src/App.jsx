@@ -503,7 +503,7 @@ function Browse({ collection, userData, cache, onOpen, onAdd }) {
   const [view, setView] = useState(() => store.get("shelf-view") || "grid");
   const setViewSaved = (v) => { setView(v); store.set("shelf-view", v); };
 
-  const sortKey = (n) => n.replace(/^(the|a|an) /i, "");
+  const sortKey = (n) => n.replace(/^(the|a|an) /i, "").replace(/^[^a-z0-9]+/i, "");
   const list = useMemo(() => {
     let L = collection;
     if (q) { const s = q.toLowerCase(); L = L.filter((f) => f.name.toLowerCase().includes(s)); }
