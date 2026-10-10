@@ -177,7 +177,7 @@ const Chevron = () => <span className="chev"><Icon d={I.chevron} size={14} sw={2
 function Poster({ film, path, size = "w342", className = "", lazy = true, request = true }) {
   const ref = useRef(null);
   const [failed, setFailed] = useState(false);
-  useEffect(() => setFailed(false), [path]);
+  useEffect(() => { setFailed(false); }, [path]);
   useEffect(() => {
     if (path || !request || !film) return;
     const el = ref.current;
@@ -728,7 +728,7 @@ export default function App() {
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
-  useEffect(() => window.scrollTo(0, 0), [tab]);
+  useEffect(() => { window.scrollTo(0, 0); }, [tab]);
 
   const collection = useMemo(() => {
     const seedKeys = new Set(SEED_COLLECTION.map(fkey));
