@@ -5,9 +5,10 @@ import META from "./meta.json";
 import { SEED_WANTLIST } from "./wantlist.js";
 import {
   store, readJSON, fkey, img, tmdb, shapeTmdbMovie, todayISO, thisYear, fmtDate, runtimeLabel, stars,
-  sortKey, letterOf, peopleLabel, editionBadges, hashStr, rng,
+  sortKey, letterOf, peopleLabel, hashStr, rng, parseEdition, copyBadges, copyLine, money,
+  FORMATS, PACKAGES, REGIONS, KNOWN_LABELS, newId,
 } from "./lib.js";
-import { TAGS, FILTERS, filterTest, activeFilterLabels, buildRecipes, dealShelves } from "./shelves.js";
+import { TAGS, makeFilters, filterTest, activeFilterLabels, buildRecipes, dealShelves } from "./shelves.js";
 import "./styles.css";
 
 // ════════════════════════════════════════════════════════════════════════
@@ -33,8 +34,16 @@ function useData() {
   const [added, setAdded] = useStored("shelf-added", []);
   const [want, setWant] = useStored("shelf-want", () => SEED_WANTLIST.map((w) => ({ ...w, bought: false })));
   const [watchLog, setWatchLog] = useStored("shelf-watchlog", {});
+  const [customTags, setCustomTags] = useStored("shelf-customtags", []);
+  const retag = (fn) => setUserData((d) => Object.fromEntries(Object.entries(d).map(([k, u]) => [k, u.tags ? { ...u, tags: fn(u.tags) } : u])));
   return {
-    userData, added, want, watchLog,
+    userData, added, want, watchLog, customTags,
+    addTag: (name) => setCustomTags((t) => (t.includes(name) || TAGS[name] ? t : [...t, name])),
+    renameTag: (from, to) => {
+      setCustomTags((t) => t.map((x) => (x === from ? to : x)).filter((x, i, a) => a.indexOf(x) === i));
+      retag((tags) => [...new Set(tags.map((x) => (x === from ? to : x)))]);
+    },
+    removeTag: (name) => { setCustomTags((t) => t.filter((x) => x !== name)); retag((tags) => tags.filter((x) => x !== name)); },
     updateFilm: (k, u) => setUserData((d) => ({ ...d, [k]: { ...(d[k] || {}), ...u } })),
     addFilm: (f) => setAdded((a) => [...a, { ...f, userAdded: true }]),
     patchAdded: (k, patch) => setAdded((a) => a.map((f) => (fkey(f) === k ? { ...f, ...patch } : f))),
@@ -47,14 +56,17 @@ function useData() {
       if (p.added) setAdded(p.added);
       if (p.want) setWant(p.want);
       if (p.watchLog) setWatchLog(p.watchLog);
+      if (p.customTags) setCustomTags(p.customTags);
     },
-    exportPayload: () => ({ userData, added, want, watchLog }),
+    exportPayload: () => ({ userData, added, want, watchLog, customTags }),
   };
 }
 
-function deriveFilm(f, userData, watchLog) {
-  const key = fkey(f);
+function deriveFilm(raw, userData, watchLog) {
+  const key = fkey(raw);
   const u = userData[key] || {};
+  const f = u.match ? { ...raw, ...u.match } : raw; // "Fix the match" swaps in another film's TMDB data
+  const copies = u.copies || parseEdition(f.edition || "").map((c, i) => ({ ...c, id: "s" + i }));
   const logged = watchLog[key];
   const views = f.views ? f.views.slice() : [];
   if (logged && !views.includes(logged)) views.push(logged);
@@ -70,7 +82,14 @@ function deriveFilm(f, userData, watchLog) {
     genres: f.genres || [], directors: f.directors || [], dop: f.dop || [], music: f.music || [],
     cast: f.cast || [], countries: f.countries || [], keywords: f.keywords || [],
     edition: f.edition || "",
-    badges: editionBadges(f.edition || ""),
+    rating: u.rating !== undefined ? u.rating : f.rating,
+    lbRating: f.rating,
+    ratingSet: u.rating !== undefined,
+    matched: !!u.match,
+    copies,
+    copiesSuggested: !u.copies && copies.length > 0,
+    badges: copyBadges(copies),
+    special: copies.some((c) => (c.package && c.package !== "Standard") || c.label),
     views, lastWatched,
     yearNum: parseInt(f.year) || 0,
     sortKey: sk, letter: letterOf(sk),
@@ -208,11 +227,11 @@ function usePullToRefresh(onRefresh, enabled) {
   return { pull, refreshing, dragging: pull > 0 && !refreshing };
 }
 
-function Home({ films, recipes, filters, home, setHome, onOpen, onSeeAll, onSearch, onFilters, active }) {
-  const eligible = useMemo(() => films.filter(filterTest(filters)), [films, filters]);
+function Home({ films, defs, recipes, filters, home, setHome, onOpen, onSeeAll, onSearch, onFilters, active }) {
+  const eligible = useMemo(() => films.filter(filterTest(defs, filters)), [films, defs, filters]);
   const pick = pickFrom(eligible, home.date, home.pick);
   const shelves = useMemo(() => dealShelves(recipes, hashStr(home.date) + home.seed * 104729), [recipes, home.date, home.seed]);
-  const labels = activeFilterLabels(filters);
+  const labels = activeFilterLabels(defs, filters);
   const filterLabel = labels.length === 0 ? "Filters" : labels.length === 1 ? labels[0] : labels[0] + " +" + (labels.length - 1);
   const [logoFailed, setLogoFailed] = useState(false);
   useEffect(() => setLogoFailed(false), [pick && pick.key]);
@@ -316,12 +335,12 @@ function Home({ films, recipes, filters, home, setHome, onOpen, onSeeAll, onSear
   );
 }
 
-function FilterSheet({ films, filters, setFilters, onClose }) {
-  const matching = films.filter(filterTest(filters)).length;
-  const groups = useMemo(() => FILTERS.map(([key, label, opts]) => {
-    const base = films.filter(filterTest(filters, key));
+function FilterSheet({ films, defs, filters, setFilters, onClose }) {
+  const matching = films.filter(filterTest(defs, filters)).length;
+  const groups = useMemo(() => defs.map(([key, label, opts]) => {
+    const base = films.filter(filterTest(defs, filters, key));
     return { key, label, opts: opts.map(([o, l, test]) => ({ o, l, n: base.filter(test).length })) };
-  }), [films, filters]);
+  }), [films, defs, filters]);
   const set = (key, o) => setFilters({ ...filters, [key]: filters[key] === o ? "any" : o });
   return (
     <Sheet title="Tonight's filters" onClose={onClose} tall
@@ -350,13 +369,21 @@ function FilterSheet({ films, filters, setFilters, onClose }) {
 const CHIPS = [
   ["all", "All", () => true],
   ["five", "5 stars", (f) => f.rating === 5],
-  ["editions", "Special editions", (f) => !!f.edition],
+  ["editions", "Special editions", (f) => f.special],
   ["4k", "4K", (f) => f.badges.includes("4K")],
   ["u120", "Under 2 hours", (f) => f.runtime && f.runtime < 120],
   ["never", "Never logged", (f) => !f.lastWatched],
   ["added", "Added here", (f) => !!f.userAdded],
   ...Object.entries(TAGS).map(([k, l]) => ["tag:" + k, l, (f) => f.tags.includes(k)]),
 ];
+const chipsFor = (films, customTags) => {
+  const labels = [...new Set(films.flatMap((f) => f.copies.map((c) => c.label).filter(Boolean)))].sort();
+  return [
+    ...CHIPS,
+    ...customTags.map((t) => ["tag:" + t, t, (f) => f.tags.includes(t)]),
+    ...labels.map((l) => ["label:" + l, l, (f) => f.copies.some((c) => c.label === l)]),
+  ];
+};
 const SORTS = {
   az: ["Title A–Z", (a, b) => a.sortKey.localeCompare(b.sortKey)],
   newest: ["Newest", (a, b) => b.yearNum - a.yearNum || a.sortKey.localeCompare(b.sortKey)],
@@ -366,7 +393,8 @@ const SORTS = {
   long: ["Longest runtime", (a, b) => (b.runtime || 0) - (a.runtime || 0)],
 };
 
-function Library({ films, extra, setExtra, onOpen, onAdd, searchFocus, onFocused }) {
+function Library({ films, customTags, extra, setExtra, onOpen, onAdd, searchFocus, onFocused }) {
+  const chips = useMemo(() => chipsFor(films, customTags), [films, customTags]);
   const [q, setQ] = useState("");
   const [chip, setChip] = useState("all");
   const [sort, setSort] = useState(() => store.get("shelf-sort") || "az");
@@ -402,13 +430,13 @@ function Library({ films, extra, setExtra, onOpen, onAdd, searchFocus, onFocused
   const never = films.filter((f) => !f.lastWatched).length;
   const query = q.trim().toLowerCase();
   const list = useMemo(() => {
-    const chipTest = CHIPS.find((c) => c[0] === chip)[2];
+    const chipTest = (chips.find((c) => c[0] === chip) || chips[0])[2];
     return films
       .filter((f) => chipTest(f) && (!extra || extra.test(f)))
       .filter((f) => !query || f.name.toLowerCase().includes(query) || f.year === query
         || f.directors.some((d) => d.toLowerCase().includes(query)) || f.cast.some((c) => c.toLowerCase().includes(query)))
       .sort(SORTS[sort][1]);
-  }, [films, chip, extra, query, sort]);
+  }, [films, chips, chip, extra, query, sort]);
   const grouped = sort === "az";
   const groups = useMemo(() => {
     if (!grouped) return [{ letter: null, films: list }];
@@ -452,7 +480,7 @@ function Library({ films, extra, setExtra, onOpen, onAdd, searchFocus, onFocused
           </div>
         )}
         <div className="chips">
-          {CHIPS.map(([k, l]) => (
+          {chips.map(([k, l]) => (
             <button key={k} className={"chip" + (chip === k ? " on" : "")} aria-pressed={chip === k} onClick={() => setChip(k)}>{l}</button>
           ))}
         </div>
@@ -527,10 +555,17 @@ function Library({ films, extra, setExtra, onOpen, onAdd, searchFocus, onFocused
 }
 
 // ─── FILM PAGE ──────────────────────────────────────────────────────────
-function FilmPage({ film, films, backLabel, onBack, onOpen, onPerson, onUpdate, onLog, onUnlog, onRemove, onPicker }) {
+function FilmPage({ film, films, allTags, backLabel, onBack, onOpen, onPerson, onUpdate, onLog, onUnlog, onRemove, onPicker, onAddTag, onEditCopy, onEditDetails }) {
   const [note, setNote] = useState(film.note);
+  const [newTag, setNewTag] = useState(null);
   const ref = useRef(null);
-  useEffect(() => { setNote(film.note); ref.current?.scrollTo(0, 0); }, [film.key]);
+  useEffect(() => { setNote(film.note); setNewTag(null); ref.current?.scrollTo(0, 0); }, [film.key]);
+  const createTag = () => {
+    const t = (newTag || "").trim().replace(/\s+/g, " ");
+    if (t) { onAddTag(t); if (!film.tags.includes(t)) onUpdate(film.key, { tags: [...film.tags, t] }); }
+    setNewTag(null);
+  };
+  const confirmCopies = () => onUpdate(film.key, { copies: film.copies.map(({ id, ...c }) => ({ ...c, id: newId() })) });
 
   const today = todayISO();
   const loggedToday = film.lastWatched === today;
@@ -575,8 +610,35 @@ function FilmPage({ film, films, backLabel, onBack, onOpen, onPerson, onUpdate, 
             <button className="btn btn-outline" onClick={onPicker} disabled={!film.tmdb}>Change poster</button>
           </div>
 
+          <section>
+            <div className="stat-head" style={{ marginBottom: 8 }}>
+              <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>On your shelf</h2>
+              <button className="link" onClick={() => onEditCopy(null)}>Add a copy</button>
+            </div>
+            {film.copiesSuggested && (
+              <div className="suggest">
+                <span>Filled in from your Letterboxd note, “{film.edition.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&nbsp;/g, " ").trim()}”. Check these, then confirm.</span>
+                <button className="link" onClick={confirmCopies}>Looks right</button>
+              </div>
+            )}
+            {film.copies.length === 0 && <div className="muted" style={{ fontSize: 15, padding: "6px 0" }}>No copy details yet. Add the format, label and edition you own.</div>}
+            {film.copies.map((c) => (
+              <button key={c.id} className="list-row copy-row" onClick={() => onEditCopy(c)}>
+                <span className={"fmt" + (c.format ? "" : " unknown")}>{c.format || "Format?"}</span>
+                <span className="grow" style={{ whiteSpace: "normal" }}>
+                  {copyLine(c)}
+                  {(c.note || c.region || c.price != null || c.purchased) && (
+                    <span className="muted" style={{ display: "block", fontSize: 13, marginTop: 2 }}>
+                      {[c.note, c.region && "Region " + c.region, c.purchased && fmtDate(c.purchased), c.price != null && c.price !== "" && money(c.price)].filter(Boolean).join(" · ")}
+                    </span>
+                  )}
+                </span>
+                <span className="chev"><Icon d={I.chev} size={14} sw={2.4} /></span>
+              </button>
+            ))}
+          </section>
+
           <dl className="dl">
-            {film.edition && <div><dt>Edition</dt><dd>{film.edition}</dd></div>}
             <div><dt>Last watched</dt><dd className="tnum">{film.lastWatched ? fmtDate(film.lastWatched) : "Never logged"}</dd></div>
             {film.views.length > 1 && <div><dt>Watched</dt><dd className="tnum">{film.views.length} times</dd></div>}
             {film.dop[0] && <div><dt>Cinematography</dt><dd><button onClick={() => onPerson(film.dop[0])}>{film.dop[0]}</button></dd></div>}
@@ -588,9 +650,17 @@ function FilmPage({ film, films, backLabel, onBack, onOpen, onPerson, onUpdate, 
           <div>
             <div className="section-label">Tags</div>
             <div className="tag-row">
-              {Object.entries(TAGS).map(([k, l]) => (
+              {allTags.map(([k, l]) => (
                 <button key={k} className={"chip" + (film.tags.includes(k) ? " on" : "")} aria-pressed={film.tags.includes(k)} onClick={() => toggleTag(k)}>{l}</button>
               ))}
+              {newTag == null
+                ? <button className="chip chip-x" style={{ color: "var(--accent)", borderStyle: "dashed" }} onClick={() => setNewTag("")}><Icon d={I.plus} size={13} sw={2.6} />New tag</button>
+                : (
+                  <form onSubmit={(e) => { e.preventDefault(); createTag(); }} style={{ display: "flex", gap: 6 }}>
+                    <input className="field" style={{ height: 32, width: 170, fontSize: 15 }} value={newTag} onChange={(e) => setNewTag(e.target.value)}
+                      onBlur={createTag} placeholder="Watch with Dad" aria-label="New tag name" autoFocus maxLength={32} />
+                  </form>
+                )}
             </div>
           </div>
 
@@ -617,9 +687,10 @@ function FilmPage({ film, films, backLabel, onBack, onOpen, onPerson, onUpdate, 
             </section>
           )}
 
-          {film.userAdded && (
-            <button className="danger" onClick={() => { onRemove(film.key); onBack(); }}>Remove from collection</button>
-          )}
+          <div style={{ display: "flex", gap: 22, flexWrap: "wrap", alignItems: "center" }}>
+            <button className="link" onClick={onEditDetails}>Edit details</button>
+            {film.userAdded && <button className="danger" onClick={() => { onRemove(film.key); onBack(); }}>Remove from collection</button>}
+          </div>
         </div>
       </div>
     </div>
@@ -670,6 +741,140 @@ function PosterPicker({ film, onPick, onClose }) {
   );
 }
 
+// ─── EDIT A COPY ────────────────────────────────────────────────────────
+function CopySheet({ film, copy, labels, onSave, onClose }) {
+  const isNew = !copy;
+  const [c, setC] = useState(() => copy ? { ...copy, price: copy.price ?? "" } : { id: newId(), format: "", package: "Standard", label: "", region: "", purchased: "", price: "", note: "" });
+  const set = (k, v) => setC((x) => ({ ...x, [k]: v }));
+  const clean = (x) => {
+    const out = { ...x, id: x.id.startsWith("s") ? newId() : x.id, label: (x.label || "").trim(), note: (x.note || "").trim() };
+    const n = parseFloat(String(x.price).replace(/[$,]/g, ""));
+    if (isNaN(n)) delete out.price; else out.price = n;
+    if (!out.purchased) delete out.purchased;
+    if (!out.region) delete out.region;
+    return out;
+  };
+  const others = film.copies.map((x) => (x.id.startsWith("s") ? { ...x, id: newId() } : x));
+  const save = () => {
+    const list = isNew ? [...others, clean(c)] : film.copies.map((x) => (x.id === copy.id ? clean(c) : x.id.startsWith("s") ? { ...x, id: newId() } : x));
+    onSave(list);
+  };
+  const remove = () => onSave(film.copies.filter((x) => x.id !== copy.id).map((x) => (x.id.startsWith("s") ? { ...x, id: newId() } : x)));
+  const Chips = ({ k, opts, allowNone }) => (
+    <div className="tag-row">
+      {opts.map((o) => (
+        <button key={o} type="button" className={"chip" + (c[k] === o ? " on" : "")} aria-pressed={c[k] === o}
+          onClick={() => set(k, c[k] === o && allowNone ? "" : o)}>{o}</button>
+      ))}
+    </div>
+  );
+  return (
+    <Sheet title={isNew ? "Add a copy" : "Edit copy"} onClose={onClose} tall
+      left={<button className="left" onClick={onClose}>Cancel</button>}
+      right={<button className="right" onClick={save}>Save</button>}
+      foot={!isNew && <button className="btn btn-outline" style={{ color: "var(--danger)" }} onClick={remove}>Delete this copy</button>}>
+      <div className="muted" style={{ fontSize: 14, marginTop: -4 }}>{film.name} ({film.year})</div>
+      <div><span className="field-label">Format</span><Chips k="format" opts={FORMATS} allowNone /></div>
+      <div><span className="field-label">Package</span><Chips k="package" opts={PACKAGES} /></div>
+      <div>
+        <label className="field-label" htmlFor="copy-label">Label or distributor</label>
+        <input id="copy-label" className="field" list="label-list" value={c.label} onChange={(e) => set("label", e.target.value)} placeholder="Criterion, Arrow, Vinegar Syndrome…" autoComplete="off" />
+        <datalist id="label-list">{labels.map((l) => <option key={l} value={l} />)}</datalist>
+      </div>
+      <div><span className="field-label">Region</span><Chips k="region" opts={REGIONS} allowNone /></div>
+      <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ flex: 1 }}>
+          <label className="field-label" htmlFor="copy-date">Bought on</label>
+          <input id="copy-date" className="field" type="date" value={c.purchased || ""} onChange={(e) => set("purchased", e.target.value)} />
+        </div>
+        <div style={{ width: 120 }}>
+          <label className="field-label" htmlFor="copy-price">Price paid</label>
+          <input id="copy-price" className="field" inputMode="decimal" value={c.price} onChange={(e) => set("price", e.target.value)} placeholder="$34.99" />
+        </div>
+      </div>
+      <div>
+        <label className="field-label" htmlFor="copy-note">Note</label>
+        <input id="copy-note" className="field" value={c.note || ""} onChange={(e) => set("note", e.target.value)} placeholder="Spine #1127, slipcover, signed…" />
+      </div>
+    </Sheet>
+  );
+}
+
+// ─── EDIT DETAILS: rating override, fix the TMDB match ─────────────────
+const MATCH_FIELDS = ["tmdb", "runtime", "genres", "directors", "dop", "music", "cast", "countries", "lang", "keywords", "collection", "poster", "backdrop", "logo"];
+function DetailsSheet({ film, onUpdate, onClose }) {
+  const [rating, setRating] = useState(film.ratingSet ? String(film.rating ?? "none") : "lb");
+  const [q, setQ] = useState(film.name);
+  const [searching, setSearching] = useState(false);
+  const [results, setResults] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    if (!searching || q.trim().length < 2) return;
+    let dead = false;
+    const t = setTimeout(() => {
+      tmdb("/search/movie", { query: q.trim() }).then((r) => !dead && setResults((r.results || []).slice(0, 8))).catch((e) => !dead && setError(e.message));
+    }, 300);
+    return () => { dead = true; clearTimeout(t); };
+  }, [q, searching]);
+
+  const saveRating = (v) => {
+    setRating(v);
+    onUpdate(film.key, { rating: v === "lb" ? undefined : v === "none" ? null : parseFloat(v) });
+  };
+  const pick = async (r) => {
+    setBusy(true); setError("");
+    try {
+      const d = await tmdb(`/movie/${r.id}`, { append_to_response: "credits,images,keywords", include_image_language: "en,null" });
+      const shaped = shapeTmdbMovie(d);
+      const match = Object.fromEntries(MATCH_FIELDS.map((k) => [k, shaped[k] ?? null]));
+      onUpdate(film.key, { match, poster: undefined });
+      onClose();
+    } catch (e) { setError(e.message); setBusy(false); }
+  };
+  return (
+    <Sheet title="Edit details" onClose={onClose} tall>
+      <div>
+        <label className="field-label" htmlFor="rating-sel">Your rating</label>
+        <select id="rating-sel" className="field" value={rating} onChange={(e) => saveRating(e.target.value)}>
+          <option value="lb">{film.lbRating != null ? `From Letterboxd (${film.lbRating} stars)` : "From Letterboxd (not rated)"}</option>
+          {[5, 4.5, 4, 3.5, 3, 2.5, 2, 1.5, 1, 0.5].map((r) => <option key={r} value={String(r)}>{r} stars</option>)}
+          <option value="none">Not rated</option>
+        </select>
+      </div>
+      <div>
+        <span className="field-label">Film data</span>
+        <div className="list-row" style={{ borderTop: "0.5px solid var(--rule)" }}>
+          <span className="grow" style={{ whiteSpace: "normal" }}>
+            Matched to TMDB #{film.tmdb || "none"}{film.directors[0] ? ` · ${film.directors[0]}` : ""}{film.runtime ? ` · ${runtimeLabel(film.runtime)}` : ""}
+          </span>
+        </div>
+        <div style={{ display: "flex", gap: 18, marginTop: 10 }}>
+          {!searching && <button className="link" onClick={() => setSearching(true)}>Wrong film? Fix the match</button>}
+          {film.matched && <button className="link" onClick={() => { onUpdate(film.key, { match: undefined, poster: undefined }); onClose(); }}>Undo my fix</button>}
+        </div>
+      </div>
+      {searching && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <input className="field" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search TMDB" autoFocus />
+          {(results || []).map((r) => (
+            <button key={r.id} className="result" disabled={busy} onClick={() => pick(r)}>
+              <Poster path={r.poster_path} title={r.title} size="w92" />
+              <div style={{ minWidth: 0 }}>
+                <div className="t">{r.title}</div>
+                <div className="s">{(r.release_date || "").slice(0, 4) || "Year unknown"}{r.id === film.tmdb ? " · current match" : ""}</div>
+              </div>
+            </button>
+          ))}
+          {results && results.length === 0 && <div className="muted" style={{ fontSize: 14 }}>No matches on TMDB.</div>}
+        </div>
+      )}
+      {error && <div style={{ color: "var(--danger)", fontSize: 14 }}>{error}</div>}
+      <p className="foot">Your title, year, copies, tags and notes stay as they are. Only the poster, credits and other TMDB data change.</p>
+    </Sheet>
+  );
+}
+
 // ─── ADD FILM ───────────────────────────────────────────────────────────
 function AddSheet({ prefill, existing, onAdd, onClose }) {
   const [q, setQ] = useState(prefill?.name || "");
@@ -709,7 +914,7 @@ function AddSheet({ prefill, existing, onAdd, onClose }) {
     setSaving(true);
     let details = { tmdb: chosen.id, poster: chosen.poster_path || undefined, backdrop: chosen.backdrop_path || undefined };
     try {
-      const d = await tmdb(`/movie/${chosen.id}`, { append_to_response: "credits,images", include_image_language: "en,null" });
+      const d = await tmdb(`/movie/${chosen.id}`, { append_to_response: "credits,images,keywords", include_image_language: "en,null" });
       details = shapeTmdbMovie(d);
     } catch {}
     onAdd({ name: chosen.title, year: yr, ...details, ...base() });
@@ -800,7 +1005,7 @@ function Bars({ data, height, sel, setSel, label }) {
   );
 }
 
-function Stats({ films, onPerson }) {
+function Stats({ films, onPerson, onLabel }) {
   const year = thisYear();
   const s = useMemo(() => {
     const rated = films.filter((f) => f.rating != null);
@@ -836,7 +1041,11 @@ function Stats({ films, onPerson }) {
       never: films.filter((f) => !f.lastWatched).length,
       complete: series.filter((c) => c.have === c.total).length,
       almost: series.filter((c) => c.have >= 2 && c.missing.length > 0).sort((a, b) => b.have / b.total - a.have / a.total).slice(0, 5),
-      editions: films.filter((f) => f.edition).length,
+      editions: films.filter((f) => f.special).length,
+      withCopies: films.filter((f) => f.copies.length && !f.copiesSuggested).length,
+      formats: ["4K", "Blu-ray", "DVD", "Other"].map((fm) => [fm, films.reduce((a, f) => a + f.copies.filter((c) => c.format === fm).length, 0)]).filter(([, n]) => n),
+      labels: tally((f) => [...new Set(f.copies.map((c) => c.label).filter(Boolean))]).slice(0, 6),
+      priced: films.flatMap((f) => f.copies).filter((c) => c.price != null && c.price !== ""),
       k4: films.filter((f) => f.badges.includes("4K")).length,
       steel: films.filter((f) => f.badges.includes("Steelbook")).length,
     };
@@ -933,6 +1142,19 @@ function Stats({ films, onPerson }) {
       </section>
 
       <section className="stat-section" style={{ gap: 0 }}>
+        <h2 style={{ marginBottom: 6 }}>Your copies</h2>
+        <div className="list-row"><span className="grow muted">Films with copy details</span><span className="tnum">{s.withCopies} of {films.length}</span></div>
+        {s.formats.map(([fm, n]) => <div className="list-row" key={fm}><span className="grow muted">{fm} discs</span><span className="tnum">{n}</span></div>)}
+        {s.labels.map(([l, n]) => (
+          <button className="list-row" key={l} onClick={() => onLabel(l)} style={{ width: "100%", textAlign: "left" }}><span className="grow">{l}</span><span className="muted tnum">{n} films</span></button>
+        ))}
+        {s.priced.length > 0 && (
+          <div className="list-row"><span className="grow muted">What the shelf cost you, {s.priced.length} priced {s.priced.length === 1 ? "copy" : "copies"}</span><span className="tnum accent">{money(s.priced.reduce((a, c) => a + c.price, 0))}</span></div>
+        )}
+        {s.withCopies < films.length && <span className="muted" style={{ fontSize: 13, marginTop: 8 }}>Formats and labels only count films you've filled in. Add copies from any film's page.</span>}
+      </section>
+
+      <section className="stat-section" style={{ gap: 0 }}>
         <h2 style={{ marginBottom: 6 }}>Editions and gaps</h2>
         <div className="list-row"><span className="grow muted">Special editions</span><span className="tnum">{s.editions}</span></div>
         <div className="list-row"><span className="grow muted">Include a 4K disc</span><span className="tnum">{s.k4}</span></div>
@@ -947,6 +1169,7 @@ function Stats({ films, onPerson }) {
 
 // ─── BACKUP ─────────────────────────────────────────────────────────────
 function Backup({ D, films, onBuy }) {
+  const [renaming, setRenaming] = useState(null);
   const fileRef = useRef(null);
   const [msg, setMsg] = useState("");
   const [adding, setAdding] = useState(false);
@@ -987,6 +1210,7 @@ function Backup({ D, films, onBuy }) {
         {row("Added here", films.filter((f) => f.userAdded).length)}
         {row("Tagged", Object.values(D.userData).filter((u) => u.tags && u.tags.length).length)}
         {row("Custom posters", Object.values(D.userData).filter((u) => u.poster).length)}
+        {row("Films with copy details", Object.values(D.userData).filter((u) => u.copies && u.copies.length).length)}
         {row("Watches logged here", Object.keys(D.watchLog).length)}
       </section>
 
@@ -997,6 +1221,35 @@ function Backup({ D, films, onBuy }) {
         </div>
         <input ref={fileRef} type="file" accept="application/json,.json" onChange={doImport} style={{ display: "none" }} />
         <span className="muted" style={{ fontSize: 13, lineHeight: 1.45 }}>{msg || "Tags, notes, poster choices, films added here, the want list and watch log live only on this device. Export now and then, and always before clearing Safari."}</span>
+      </section>
+
+      <section className="stat-section" style={{ gap: 0 }}>
+        <h2 style={{ marginBottom: 6 }}>Your tags</h2>
+        {Object.entries(TAGS).map(([k, l]) => (
+          <div className="list-row" key={k}><span className="grow">{l}</span><span className="muted tnum">{films.filter((f) => f.tags.includes(k)).length}</span></div>
+        ))}
+        {D.customTags.map((t) => (
+          <div className="list-row" key={t}>
+            {renaming && renaming.from === t ? (
+              <form className="grow" style={{ display: "flex", gap: 8 }} onSubmit={(e) => {
+                e.preventDefault();
+                const to = renaming.to.trim().replace(/\s+/g, " ");
+                if (to && to !== t && !TAGS[to]) D.renameTag(t, to);
+                setRenaming(null);
+              }}>
+                <input className="field" style={{ height: 34, fontSize: 15 }} value={renaming.to} onChange={(e) => setRenaming({ from: t, to: e.target.value })} aria-label={"Rename " + t} autoFocus maxLength={32} />
+                <button className="link" type="submit">Save</button>
+              </form>
+            ) : (
+              <>
+                <span className="grow">{t} <span className="muted tnum">· {films.filter((f) => f.tags.includes(t)).length}</span></span>
+                <button className="link" style={{ fontSize: 14 }} onClick={() => setRenaming({ from: t, to: t })}>Rename</button>
+                <button style={{ fontSize: 14, color: "var(--danger)" }} onClick={() => D.removeTag(t)}>Remove</button>
+              </>
+            )}
+          </div>
+        ))}
+        <span className="muted" style={{ fontSize: 13, marginTop: 8 }}>{D.customTags.length ? "Removing a tag takes it off every film." : "Make your own tags from any film's page, under Tags."}</span>
       </section>
 
       <section className="stat-section" style={{ gap: 0 }}>
@@ -1059,7 +1312,12 @@ export default function App() {
     return [...SEED_COLLECTION, ...D.added.filter((f) => !seedKeys.has(fkey(f)))].map((f) => deriveFilm(f, D.userData, D.watchLog));
   }, [D.added, D.userData, D.watchLog]);
   const byKey = useMemo(() => new Map(films.map((f) => [f.key, f])), [films]);
-  const recipes = useMemo(() => buildRecipes(films), [films]);
+  const recipes = useMemo(() => buildRecipes(films, D.customTags), [films, D.customTags]);
+  const defs = useMemo(() => makeFilters(D.customTags), [D.customTags]);
+  const allTags = useMemo(() => [...Object.entries(TAGS), ...D.customTags.map((t) => [t, t])], [D.customTags]);
+  const labels = useMemo(() => [...new Set([...KNOWN_LABELS, ...films.flatMap((f) => f.copies.map((c) => c.label).filter(Boolean))])].sort(), [films]);
+  const [copyEdit, setCopyEdit] = useState(null);
+  const [detailsFor, setDetailsFor] = useState(null);
 
   // Films added by hand in the old app have no TMDB data yet: look them up once.
   const tried = useRef(new Set());
@@ -1070,14 +1328,14 @@ export default function App() {
         const res = await tmdb("/search/movie", { query: f.name, year: f.year });
         const hit = (res.results || []).find((r) => (r.release_date || "").startsWith(f.year)) || res.results?.[0];
         if (!hit) return;
-        const d = await tmdb(`/movie/${hit.id}`, { append_to_response: "credits,images", include_image_language: "en,null" });
+        const d = await tmdb(`/movie/${hit.id}`, { append_to_response: "credits,images,keywords", include_image_language: "en,null" });
         D.patchAdded(fkey(f), shapeTmdbMovie(d));
       } catch {}
     });
   }, [D.added]);
 
   const top = stack.length ? byKey.get(stack[stack.length - 1]) : null;
-  useBodyLock(!!top || !!adding || !!picking || showFilters);
+  useBodyLock(!!top || !!adding || !!picking || showFilters || !!copyEdit || !!detailsFor);
 
   const openFilm = (f) => setStack((s) => (s[s.length - 1] === f.key ? s : [...s, f.key]));
   const back = () => setStack((s) => s.slice(0, -1));
@@ -1089,17 +1347,18 @@ export default function App() {
   return (
     <div className="app">
       <main hidden={tab !== "home"}>
-        <Home films={films} recipes={recipes} filters={filters} home={home} setHome={setHome} active={tab === "home" && !top}
+        <Home films={films} defs={defs} recipes={recipes} filters={filters} home={home} setHome={setHome} active={tab === "home" && !top}
           onOpen={openFilm} onSeeAll={(s) => toLibrary({ label: s.title, test: s.test })}
           onSearch={() => { toLibrary(null); setSearchFocus((n) => n + 1); }}
           onFilters={(x) => (x === "reset" ? setFilters({}) : setShowFilters(true))} />
       </main>
-      {tab === "library" && <main><Library films={films} extra={extra} setExtra={setExtra} onOpen={openFilm} onAdd={() => setAdding({})} searchFocus={searchFocus} onFocused={() => setSearchFocus(0)} /></main>}
-      {tab === "stats" && <main><Stats films={films} onPerson={onPerson} /></main>}
+      {tab === "library" && <main><Library films={films} customTags={D.customTags} extra={extra} setExtra={setExtra} onOpen={openFilm} onAdd={() => setAdding({})} searchFocus={searchFocus} onFocused={() => setSearchFocus(0)} /></main>}
+      {tab === "stats" && <main><Stats films={films} onPerson={onPerson} onLabel={(l) => toLibrary({ label: l, test: (f) => f.copies.some((c) => c.label === l) })} /></main>}
       {tab === "backup" && <main><Backup D={D} films={films} onBuy={(w) => setAdding({ name: w.film, year: w.year, label: w.label })} /></main>}
 
       {top && (
-        <FilmPage key="film" film={top} films={films} backLabel={backLabel} onBack={back} onOpen={openFilm} onPerson={onPerson}
+        <FilmPage key="film" film={top} films={films} allTags={allTags} onAddTag={D.addTag}
+          onEditCopy={(c) => setCopyEdit({ key: top.key, copy: c })} onEditDetails={() => setDetailsFor(top.key)} backLabel={backLabel} onBack={back} onOpen={openFilm} onPerson={onPerson}
           onUpdate={D.updateFilm} onLog={D.logWatch} onUnlog={D.unlogWatch} onRemove={D.removeFilm} onPicker={() => setPicking(top.key)} />
       )}
 
@@ -1113,7 +1372,12 @@ export default function App() {
         </div>
       </nav>
 
-      {showFilters && <FilterSheet films={films} filters={filters} setFilters={setFilters} onClose={() => setShowFilters(false)} />}
+      {copyEdit && byKey.get(copyEdit.key) && (
+        <CopySheet film={byKey.get(copyEdit.key)} copy={copyEdit.copy} labels={labels} onClose={() => setCopyEdit(null)}
+          onSave={(copies) => { D.updateFilm(copyEdit.key, { copies }); setCopyEdit(null); }} />
+      )}
+      {detailsFor && byKey.get(detailsFor) && <DetailsSheet film={byKey.get(detailsFor)} onUpdate={D.updateFilm} onClose={() => setDetailsFor(null)} />}
+      {showFilters && <FilterSheet films={films} defs={defs} filters={filters} setFilters={setFilters} onClose={() => setShowFilters(false)} />}
       {picking && byKey.get(picking) && (
         <PosterPicker film={byKey.get(picking)} onClose={() => setPicking(null)}
           onPick={(p) => { D.updateFilm(picking, { poster: p }); setPicking(null); }} />

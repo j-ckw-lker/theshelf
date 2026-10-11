@@ -18,12 +18,13 @@ const tagged = (t) => (f) => f.tags.includes(t);
 
 // ─── Tonight's filters ──────────────────────────────────────────────────
 // [key, label, [[optionKey, label, test], …]]. "any" is implied first.
-export const FILTERS = [
+export const makeFilters = (customTags = []) => [
   ["mood", "Mood", [
     ["comfort", "Comfort", (f) => (f.rating ?? 0) >= 4.5 || f.tags.includes("comfort")],
     ["five", "5 stars", (f) => f.rating === 5],
     ["rewatch", "Tagged rewatch", tagged("rewatch")],
     ["gem", "Tagged gem", tagged("hidden")],
+    ...customTags.map((t) => ["tag:" + t, t, tagged(t)]),
   ]],
   ["genre", "Genre", [
     ["action", "Action", hasGenre("Action")],
@@ -66,13 +67,14 @@ export const FILTERS = [
   ["format", "Format", [
     ["4k", "4K", (f) => f.badges.includes("4K")],
     ["steel", "Steelbook", (f) => f.badges.includes("Steelbook")],
-    ["special", "Any special edition", (f) => !!f.edition],
+    ["special", "Any special edition", (f) => f.special],
   ]],
 ];
+export const FILTERS = makeFilters();
 
-export const filterTest = (filters, skipKey) => (f) =>
+export const filterTest = (defs, filters, skipKey) => (f) =>
   !f.tags.includes("sell") &&
-  FILTERS.every(([key, , opts]) => {
+  defs.every(([key, , opts]) => {
     if (key === skipKey) return true;
     const sel = filters[key];
     if (!sel || sel === "any") return true;
@@ -80,8 +82,8 @@ export const filterTest = (filters, skipKey) => (f) =>
     return !opt || opt[2](f);
   });
 
-export const activeFilterLabels = (filters) =>
-  FILTERS.flatMap(([key, , opts]) => {
+export const activeFilterLabels = (defs, filters) =>
+  defs.flatMap(([key, , opts]) => {
     const opt = opts.find((o) => o[0] === filters[key]);
     return opt ? [opt[1]] : [];
   });
@@ -115,7 +117,7 @@ const VIBES = [
   ["five", "Five stars, no notes", (f) => f.rating === 5],
 ];
 
-export function buildRecipes(films) {
+export function buildRecipes(films, customTags = []) {
   const out = [];
   const add = (r) => {
     const list = films.filter((f) => !f.tags.includes("sell") && r.test(f));
@@ -146,22 +148,32 @@ export function buildRecipes(films) {
   add({ id: "epic", title: "Clear the evening: 2½ hours+", test: (f) => f.runtime >= 150, sub: (f) => runtimeLabel(f.runtime) });
   add({ id: "dusty", title: "Not watched in over 2 years", test: (f) => f.lastWatched && yearsSince(f.lastWatched) > 2, sub: (f) => "Last " + f.lastWatched.slice(0, 4) });
   add({ id: "never", title: "On the shelf, never logged", test: (f) => !f.lastWatched });
-  add({ id: "editions", title: "Special editions", min: 4, test: (f) => !!f.edition, sub: (f) => f.badges[0] || "Special edition" });
+  add({ id: "editions", title: "Special editions", min: 4, test: (f) => f.special, sub: (f) => f.badges[0] || "Special edition" });
+  // Shelves you curate yourself (tags, labels) get dealt more often than generic ones.
+  [["comfort", "Comfort picks"], ["rewatch", "Due a rewatch"], ["hidden", "Hidden gems"], ["upgrade", "Upgrade candidates"]]
+    .forEach(([t, title]) => add({ id: "tag:" + t, title, min: 3, weight: 4, test: (f) => f.tags.includes(t) }));
+  customTags.forEach((t) => add({ id: "tag:" + t, title: t, min: 3, weight: 4, test: (f) => f.tags.includes(t) }));
+  const labels = new Map();
+  films.forEach((f) => f.copies.forEach((c) => c.label && labels.set(c.label, (labels.get(c.label) || 0) + 1)));
+  labels.forEach((n, l) => add({ id: "label:" + l, title: "From " + l, min: 3, weight: 2, test: (f) => f.copies.some((c) => c.label === l) }));
 
   // Seasonal shelves jump the queue in their month.
   const month = new Date().getMonth();
-  if (month === 9) add({ id: "halloween", title: "Halloween season", seasonal: true, test: (f) => f.genres.includes("Horror") || f.keywords.includes("halloween") });
-  if (month === 11) add({ id: "christmas", title: "Set at Christmas", seasonal: true, min: 3, test: (f) => f.keywords.includes("christmas") });
+  if (month === 9) add({ id: "halloween", title: "Halloween season", weight: 10, test: (f) => f.genres.includes("Horror") || f.keywords.includes("halloween") });
+  if (month === 11) add({ id: "christmas", title: "Set at Christmas", weight: 10, min: 3, test: (f) => f.keywords.includes("christmas") });
 
   return out;
 }
 
-// Deal four shelves: seasonal first, at most one "person" shelf, films shuffled within each.
+// Deal four shelves: a weighted shuffle (seasonal and your own tags/labels come up more often,
+// but nothing is pinned), at most one "person" shelf, films shuffled within each.
 export function dealShelves(recipes, seed, count = 4) {
   const rand = rng(seed);
-  const seasonal = recipes.filter((r) => r.seasonal);
-  const rest = shuffled(recipes.filter((r) => !r.seasonal), rand);
-  const picked = [...seasonal];
+  const rest = recipes
+    .map((r) => ({ r, k: Math.pow(rand(), 1 / (r.weight || 1)) }))
+    .sort((a, b) => b.k - a.k)
+    .map((x) => x.r);
+  const picked = [];
   let people = 0;
   for (const r of rest) {
     if (picked.length >= count) break;

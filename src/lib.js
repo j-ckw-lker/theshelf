@@ -42,6 +42,7 @@ export function shapeTmdbMovie(d) {
     dop: jobs("Director of Photography").slice(0, 1),
     music: jobs("Original Music Composer", "Music").slice(0, 2),
     cast: (d.credits?.cast || []).slice(0, 3).map((c) => c.name),
+    keywords: (d.keywords?.keywords || []).slice(0, 10).map((k) => k.name),
     countries: (d.production_countries || []).map((c) => c.iso_3166_1),
     lang: d.original_language || undefined,
     collection: d.belongs_to_collection?.id || undefined,
@@ -116,3 +117,54 @@ export function shuffled(list, rand) {
   }
   return a;
 }
+
+// ─── Copies (the physical discs you own of a film) ─────────────────────
+export const FORMATS = ["4K", "Blu-ray", "DVD", "Other"];
+export const PACKAGES = ["Standard", "Steelbook", "Limited", "Collector's", "Box set"];
+export const REGIONS = ["A", "B", "C", "Free"];
+const LABEL_PATTERNS = [
+  [/criterion/, "Criterion"], [/arrow/, "Arrow"], [/vinegar/, "Vinegar Syndrome"], [/radiance/, "Radiance"],
+  [/shout|scream factory/, "Shout! Factory"], [/kino/, "Kino Lorber"], [/\ba24\b/, "A24"], [/film vault/, "The Film Vault"],
+  [/88 films/, "88 Films"], [/second sight/, "Second Sight"], [/eureka|masters of cinema/, "Eureka"], [/severin/, "Severin"],
+  [/umbrella/, "Umbrella"], [/indicator|powerhouse/, "Indicator"], [/imprint/, "Imprint"], [/\bnova\b/, "Nova Media"],
+  [/mondo/, "Mondo"], [/zavvi/, "Zavvi"], [/blue underground/, "Blue Underground"], [/synapse/, "Synapse"],
+  [/warner/, "Warner"], [/universal/, "Universal"], [/sony/, "Sony"], [/paramount/, "Paramount"], [/disney/, "Disney"],
+  [/lionsgate/, "Lionsgate"], [/neon\b/, "Neon"], [/third window/, "Third Window"], [/well go/, "Well Go USA"],
+];
+export const KNOWN_LABELS = LABEL_PATTERNS.map((l) => l[1]);
+export const newId = () => Math.random().toString(36).slice(2, 9);
+
+// Turn a free-text Letterboxd note ("2 copies. 4k steelbook & blu ray steelbook") into suggested copies.
+export function parseEdition(text = "") {
+  let t = text.toLowerCase().replace(/<[^>]+>/g, " ").replace(/&amp;/g, "&").replace(/&nbsp;/g, " ").replace(/[’`]/g, "'");
+  t = t.replace(/\b\d+\s+copies\.?/g, " ").replace(/\s+/g, " ").trim();
+  t = t.replace(/black\s*(&|and)\s*chrome/g, "blackxchrome");
+  if (!t) return [];
+  const out = [];
+  t.split(/,|&|\band\b|\+|;/).map((s) => s.trim()).filter(Boolean).forEach((part) => {
+    const n = +(part.match(/^(\d+)\s+/) || [])[1] || 1;
+    const format = /\b4k\b|uhd/.test(part) ? "4K" : /blu.?ray|\bbd\b/.test(part) ? "Blu-ray" : /dvd/.test(part) ? "DVD" : "";
+    const pkg = /steel/.test(part) ? "Steelbook" : /collector/.test(part) ? "Collector's" : /limited/.test(part) ? "Limited"
+      : /collection|box|trilogy/.test(part) ? "Box set" : "Standard";
+    const lab = LABEL_PATTERNS.find(([re]) => re.test(part));
+    const leftover = part
+      .replace(/^\d+\s+/, "").replace(/\b4k\b|uhd|blu.?rays?|\bbd\b|dvds?|steelbooks?|collector'?s?|edition|limited|ultra hd/g, "")
+      .replace(lab ? lab[0] : /$^/, "").replace(/\bthe\b|\bw\/|\s+/g, " ").trim();
+    const note = leftover.length > 2
+      ? part.replace(/^\d+\s+/, "").replace("blackxchrome", "Black & Chrome").replace(/^\w/, (c) => c.toUpperCase()) : "";
+    for (let i = 0; i < Math.min(n, 6); i++) out.push({ id: newId(), format, package: pkg, label: lab ? lab[1] : "", note });
+  });
+  return out;
+}
+
+export function copyBadges(copies) {
+  const out = [];
+  if (copies.some((c) => c.format === "4K")) out.push("4K");
+  if (copies.some((c) => c.package === "Steelbook")) out.push("Steelbook");
+  [...new Set(copies.map((c) => c.label).filter(Boolean))].forEach((l) => out.push(l));
+  if (copies.length > 1) out.push(copies.length + " copies");
+  return out;
+}
+
+export const copyLine = (c) => [c.package && c.package !== "Standard" ? c.package : null, c.label || null].filter(Boolean).join(" · ") || "Standard";
+export const money = (n) => (n == null || n === "" ? "" : "$" + Number(n).toFixed(Number(n) % 1 ? 2 : 0));

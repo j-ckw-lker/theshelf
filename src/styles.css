@@ -178,6 +178,12 @@ img { display: block; }
 .notes::placeholder { color: var(--label-3); }
 .danger { color: var(--danger); font-size: 15px; align-self: flex-start; }
 
+.suggest { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; padding: 10px 12px; margin-bottom: 6px; border-radius: 9px; background: rgba(240, 167, 66, 0.10); font-size: 14px; line-height: 1.4; color: rgba(235, 235, 245, 0.85); }
+.copy-row { width: 100%; text-align: left; align-items: center; }
+.copy-row .chev { color: var(--label-3); display: grid; }
+.fmt { flex-shrink: 0; min-width: 58px; text-align: center; border: 0.5px solid rgba(235, 235, 245, 0.42); border-radius: 5px; padding: 2px 6px; font-size: 12px; font-weight: 600; }
+.fmt.unknown { color: var(--label-3); border-style: dashed; }
+
 /* ── Sheets ───────────────────────────────────────────────── */
 .scrim { position: fixed; z-index: 60; inset: 0; background: rgba(0, 0, 0, 0.55); display: flex; align-items: flex-end; justify-content: center; animation: fade 0.2s ease-out; }
 .sheet { width: 100%; max-width: 560px; max-height: 92vh; display: flex; flex-direction: column; background: var(--sheet); border-radius: 14px 14px 0 0; animation: rise 0.3s cubic-bezier(.2, .9, .3, 1); }
