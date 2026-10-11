@@ -177,26 +177,28 @@ function Sheet({ title, onClose, left, right, tall, children, foot, sub }) {
   );
 }
 
-// Freeze the page behind overlays. iOS ignores overflow:hidden on body and can lose the scroll
-// position, so pin the body in place at its current offset and put it back exactly on release.
-// Counted, so a sheet over a film page doesn't unlock the page underneath.
+// Freeze the page behind overlays, and remember exactly where you were so closing the overlay
+// puts you back (iOS can lose the position on its own). Counted, so a sheet over a film page
+// doesn't unlock the page underneath. No position:fixed on body: in the home-screen app that
+// shifts fixed elements and leaves a gap under the tab bar.
 let locks = 0, lockedY = 0;
 // Leaving for somewhere else (another tab) — land at the top instead of the old spot.
 const forgetScroll = () => { lockedY = 0; };
 const useBodyLock = (on) => useLayoutEffect(() => {
   if (!on) return;
-  const settle = () => setTimeout(() => { if (locks > 0 && window.scrollY !== 0) window.scrollTo(0, 0); }, 60);
+  // The iOS keyboard can nudge the page while a field is focused; put it back when the field closes.
+  const settle = () => setTimeout(() => { if (locks > 0 && Math.abs(window.scrollY - lockedY) > 1) window.scrollTo(0, lockedY); }, 60);
   document.addEventListener("focusout", settle);
   if (locks++ === 0) {
     lockedY = window.scrollY;
-    const b = document.body.style;
-    b.position = "fixed"; b.top = -lockedY + "px"; b.left = "0"; b.right = "0"; b.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
   }
   return () => {
     document.removeEventListener("focusout", settle);
     if (--locks === 0) {
-      const b = document.body.style;
-      b.position = ""; b.top = ""; b.left = ""; b.right = ""; b.overflow = "";
+      document.documentElement.style.overflow = "";
+      document.body.style.overflow = "";
       window.scrollTo(0, lockedY);
     }
   };
