@@ -187,8 +187,8 @@ img { display: block; }
 
 /* ── Sheets ───────────────────────────────────────────────── */
 .scrim { position: fixed; z-index: 60; inset: 0; background: rgba(0, 0, 0, 0.55); display: flex; align-items: flex-end; justify-content: center; animation: fade 0.2s ease-out; }
-.sheet { width: 100%; max-width: 560px; max-height: 92vh; display: flex; flex-direction: column; background: var(--sheet); border-radius: 14px 14px 0 0; animation: rise 0.3s cubic-bezier(.2, .9, .3, 1); }
-.sheet.tall { height: 92vh; }
+.sheet { width: 100%; max-width: 560px; max-height: calc(100vh - var(--top) - 12px); max-height: calc(100dvh - var(--top) - 12px); display: flex; flex-direction: column; background: var(--sheet); border-radius: 14px 14px 0 0; animation: rise 0.3s cubic-bezier(.2, .9, .3, 1); }
+.sheet.tall { height: calc(100vh - var(--top) - 12px); height: calc(100dvh - var(--top) - 12px); }
 .sheet-head { padding: 8px 20px 12px; border-bottom: 0.5px solid rgba(255, 255, 255, 0.12); }
 .grabber { width: 36px; height: 5px; border-radius: 3px; background: rgba(235, 235, 245, 0.3); margin: 0 auto 10px; }
 .sheet-bar { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; }
@@ -345,3 +345,7 @@ img { display: block; }
   font-size: 14px; font-weight: 600; color: var(--label); background: rgba(44, 44, 48, 0.82); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border: 0.5px solid var(--rule);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45); opacity: 0; transform: translate(-50%, 10px) scale(0.92); pointer-events: none; transition: opacity 0.2s, transform 0.2s; }
 .to-top.on { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+
+/* iOS date inputs carry an intrinsic width and spill out of their box */
+input[type="date"].field { min-width: 0; max-width: 100%; display: block; -webkit-appearance: none; appearance: none; line-height: 44px; }
+input[type="date"].field::-webkit-date-and-time-value { text-align: left; }

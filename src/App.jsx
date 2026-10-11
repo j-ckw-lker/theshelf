@@ -185,12 +185,15 @@ let locks = 0, lockedY = 0;
 const forgetScroll = () => { lockedY = 0; };
 const useBodyLock = (on) => useLayoutEffect(() => {
   if (!on) return;
+  const settle = () => setTimeout(() => { if (locks > 0 && window.scrollY !== 0) window.scrollTo(0, 0); }, 60);
+  document.addEventListener("focusout", settle);
   if (locks++ === 0) {
     lockedY = window.scrollY;
     const b = document.body.style;
     b.position = "fixed"; b.top = -lockedY + "px"; b.left = "0"; b.right = "0"; b.overflow = "hidden";
   }
   return () => {
+    document.removeEventListener("focusout", settle);
     if (--locks === 0) {
       const b = document.body.style;
       b.position = ""; b.top = ""; b.left = ""; b.right = ""; b.overflow = "";
@@ -1094,11 +1097,11 @@ function CopySheet({ film, copy, labels, onSave, onClose }) {
       </div>
       <div><span className="field-label">Region</span><Chips k="region" opts={REGIONS} allowNone /></div>
       <div style={{ display: "flex", gap: 10 }}>
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <label className="field-label" htmlFor="copy-date">Bought on</label>
           <input id="copy-date" className="field" type="date" value={c.purchased || ""} onChange={(e) => set("purchased", e.target.value)} />
         </div>
-        <div style={{ width: 120 }}>
+        <div style={{ width: 120, flexShrink: 0 }}>
           <label className="field-label" htmlFor="copy-price">Price paid</label>
           <input id="copy-price" className="field" inputMode="decimal" value={c.price} onChange={(e) => set("price", e.target.value)} placeholder="$34.99" />
         </div>
