@@ -565,6 +565,53 @@ function FilmPage({ film, films, allTags, backLabel, onBack, onOpen, onPerson, o
     if (t) { onAddTag(t); if (!film.tags.includes(t)) onUpdate(film.key, { tags: [...film.tags, t] }); }
     setNewTag(null);
   };
+  // Swipe right anywhere on the page to go back, like iOS.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    let sx = 0, sy = 0, t0 = 0, mode = null, dx = 0;
+    const set = (x, animate) => {
+      el.style.transition = animate ? "transform 0.25s cubic-bezier(.2,.9,.3,1), box-shadow 0.25s" : "none";
+      el.style.transform = x ? `translateX(${x}px)` : "";
+      el.style.boxShadow = x ? "-12px 0 32px rgba(0,0,0,0.5)" : "";
+    };
+    const start = (e) => {
+      if (e.touches.length !== 1 || e.target.closest(".shelf-row, input, textarea, select, .scrim")) { mode = "off"; return; }
+      sx = e.touches[0].clientX; sy = e.touches[0].clientY; t0 = Date.now(); mode = null; dx = 0;
+    };
+    const move = (e) => {
+      if (mode === "off" || mode === "v") return;
+      const x = e.touches[0].clientX - sx, y = e.touches[0].clientY - sy;
+      if (mode == null) {
+        if (Math.abs(x) < 10 && Math.abs(y) < 10) return;
+        mode = x > 0 && Math.abs(x) > Math.abs(y) * 1.4 ? "h" : "v";
+        if (mode === "v") return;
+      }
+      dx = Math.max(0, x);
+      if (e.cancelable) e.preventDefault();
+      set(dx, false);
+    };
+    const end = () => {
+      if (mode !== "h") { mode = null; return; }
+      mode = null;
+      const w = el.clientWidth || window.innerWidth;
+      const fast = dx / Math.max(1, Date.now() - t0) > 0.5 && dx > 40;
+      if (dx > w * 0.33 || fast) {
+        set(w, true);
+        setTimeout(() => { set(0, false); onBack(); }, 220);
+      } else set(0, true);
+    };
+    el.addEventListener("touchstart", start, { passive: true });
+    el.addEventListener("touchmove", move, { passive: false });
+    el.addEventListener("touchend", end);
+    el.addEventListener("touchcancel", end);
+    return () => {
+      el.removeEventListener("touchstart", start);
+      el.removeEventListener("touchmove", move);
+      el.removeEventListener("touchend", end);
+      el.removeEventListener("touchcancel", end);
+    };
+  }, [onBack]);
   const confirmCopies = () => onUpdate(film.key, { copies: film.copies.map(({ id, ...c }) => ({ ...c, id: newId() })) });
 
   const today = todayISO();
