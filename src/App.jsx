@@ -8,7 +8,7 @@ import {
   sortKey, letterOf, peopleLabel, hashStr, rng, shuffled, yearsSince, parseEdition, copyBadges, copyLine, money,
   FORMATS, PACKAGES, REGIONS, KNOWN_LABELS, newId,
 } from "./lib.js";
-import { TAGS, makeFilters, filterTest, activeFilterLabels, buildRecipes, dealShelves } from "./shelves.js";
+import { TAGS, THEMES, makeFilters, filterTest, activeFilterLabels, buildRecipes, dealShelves } from "./shelves.js";
 import { pairIndex, bestPairs, partnersFor, scorePair, nightPlan, reasonLine } from "./pairs.js";
 import "./styles.css";
 
@@ -453,7 +453,7 @@ const byCount = (lists) => {
 };
 const GENRE_NAMES = { "Science Fiction": "Sci-fi" };
 // Groups that get long show their biggest few, with an "All N" to open the rest.
-const GROUP_CAP = { label: 10, genre: 12, country: 8, director: 10 };
+const GROUP_CAP = { label: 10, genre: 12, theme: 10, country: 8, director: 10 };
 let regionNames = null;
 const countryName = (code) => {
   if (code === "US") return "US";
@@ -477,6 +477,7 @@ const libGroups = (films, customTags) => {
     ["tag", "Tags", [...Object.entries(TAGS), ...customTags.map((t) => [t, t])].map(([k, l]) => [k, l, (f) => f.tags.includes(k)])],
     ["decade", "Decade", decades.map((d) => [String(d), d + "s", (f) => f.yearNum >= d && f.yearNum < d + 10])],
     ["genre", "Genre", genres.map((g) => [g, GENRE_NAMES[g] || g, (f) => f.genres.includes(g)])],
+    ["theme", "Theme", THEMES.map(([k, l, t]) => [k, l, t, films.filter(t).length]).filter((o) => o[3] > 0).sort((a, b) => b[3] - a[3]).map(([k, l, t]) => [k, l, t])],
     ["country", "Country & language", [
       ...countries.map((c) => [c, countryName(c), (f) => f.countries.includes(c)]),
       ["foreign", "Not in English", (f) => f.lang && f.lang !== "en"],
@@ -563,7 +564,7 @@ function Library({ films, customTags, extra, setExtra, onOpen, onAdd, onSettings
     return films
       .filter((f) => test(f) && (!extra || extra.test(f)))
       .filter((f) => !query || f.name.toLowerCase().includes(query) || f.year === query
-        || f.directors.some((d) => d.toLowerCase().includes(query)) || f.cast.some((c) => c.toLowerCase().includes(query)))
+        || [...f.directors, ...f.cast, ...f.dop, ...f.music].some((n) => n.toLowerCase().includes(query)))
       .sort(SORTS[byRecent ? "recent" : sort][1]);
   }, [films, active, extra, query, sort, byRecent]);
   const grouped = sort === "az" && !byRecent;
@@ -594,7 +595,7 @@ function Library({ films, customTags, extra, setExtra, onOpen, onAdd, onSettings
         </div>
         <label className="search">
           <Icon d={I.search} size={16} sw={2.2} />
-          <input ref={inputRef} type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Title, director, actor or year" aria-label="Search the library" />
+          <input ref={inputRef} type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Title, year or anyone in the credits" aria-label="Search the library" />
           {q && <button onClick={() => setQ("")} aria-label="Clear search" style={{ color: "var(--label-2)", display: "grid" }}><Icon d={I.close} size={14} sw={2.4} /></button>}
         </label>
         {extra && (

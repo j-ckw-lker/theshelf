@@ -117,6 +117,10 @@ const VIBES = [
   ["five", "Five stars, no notes", (f) => f.rating === 5],
 ];
 
+// Keyword themes, reused as a Theme filter in the Library (the genre/country/rating vibes are filters already).
+const THEME_IDS = ["yakuza", "heist", "hitmen", "paranoia", "killers", "spies", "dystopia", "revenge", "martial", "bw", "nyc", "la", "gangsters", "satire", "timetravel", "vampires"];
+export const THEMES = VIBES.filter((v) => THEME_IDS.includes(v[0]));
+
 export function buildRecipes(films, customTags = [], pairs = []) {
   const out = [];
   const add = (r) => {
