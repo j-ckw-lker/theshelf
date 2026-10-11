@@ -405,3 +405,10 @@ html[data-vt="seeall"]::view-transition-new(root) { animation: vt-in 0.34s ease 
 ::view-transition-old(see-6), ::view-transition-new(see-6) { height: 100%; width: 100%; object-fit: cover; }
 ::view-transition-group(see-7) { animation-duration: 0.56s; animation-delay: 196ms; animation-timing-function: cubic-bezier(.2, .9, .3, 1); }
 ::view-transition-old(see-7), ::view-transition-new(see-7) { height: 100%; width: 100%; object-fit: cover; }
+/* Removing filters: posters on screen glide to their new spots, the rest fade in */
+html[data-vt="reflow"]::view-transition-old(root) { animation: vt-out 0.2s ease both; }
+html[data-vt="reflow"]::view-transition-new(root) { animation: vt-in 0.34s ease 0.12s both; }
+html[data-vt="reflow"]::view-transition-group(*) { animation-duration: 0.48s; animation-timing-function: cubic-bezier(.2, .9, .3, 1); }
+html[data-vt="reflow"]::view-transition-group(root), html[data-vt="reflow"]::view-transition-group(tabbar) { animation-duration: 0.34s; }
+html[data-vt="reflow"]::view-transition-old(*), html[data-vt="reflow"]::view-transition-new(*) { height: 100%; }
+html[data-vt="reflow"]::view-transition-old(root), html[data-vt="reflow"]::view-transition-new(root) { height: auto; }

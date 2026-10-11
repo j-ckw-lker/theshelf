@@ -184,6 +184,19 @@ const posterFor = (key) => {
   return r.bottom > 0 && r.top < window.innerHeight && r.width > 0 ? el : null;
 };
 
+// Change the Library's contents while keeping track of the posters on screen: each one glides to
+// its new spot (or fades if it's no longer in view), and newly revealed posters fade in.
+const onScreen = (el) => { const r = el.getBoundingClientRect(); return r.right > 0 && r.left < window.innerWidth && r.bottom > 0 && r.top < window.innerHeight; };
+function reflow(update) {
+  const named = [];
+  const name = (el, n) => { if (el) { el.style.viewTransitionName = n; named.push(el); } };
+  const clear = () => named.splice(0).forEach((el) => { el.style.viewTransitionName = ""; });
+  const keys = [...document.querySelectorAll("main:not([hidden]) [data-key]")].filter(onScreen).slice(0, 60).map((b) => b.dataset.key);
+  keys.forEach((k) => name(document.querySelector(`main:not([hidden]) [data-key="${CSS.escape(k)}"] .poster`), "r" + hashStr(k)));
+  const t = transition("reflow", () => { clear(); update(); }, () => keys.forEach((k) => name(posterFor(k), "r" + hashStr(k))));
+  if (t) t.finished.finally(clear); else clear();
+}
+
 function Sheet({ title, onClose, left, right, tall, children, foot, sub }) {
   const sheetRef = useRef(null);
   const [leaving, setLeaving] = useState(false);
@@ -683,7 +696,7 @@ function Library({ films, customTags, extra, setExtra, onOpen, onAdd, onSettings
         </label>
         {extra && (
           <div className="lib-filter">
-            <button className="chip on chip-x" onClick={() => setExtra(null)} aria-label={"Remove filter " + extra.label}>
+            <button className="chip on chip-x" onClick={() => reflow(() => setExtra(null))} aria-label={"Remove filter " + extra.label}>
               <span className="extra-label">{extra.label}</span><Icon d={I.close} size={12} sw={2.6} />
             </button>
           </div>
@@ -694,7 +707,7 @@ function Library({ films, customTags, extra, setExtra, onOpen, onAdd, onSettings
           </button>
           <span className="lib-count tnum">
             {list.length === films.length ? `${list.length} films` : `${list.length} of ${films.length}`}
-            {(nActive > 0 || extra) && <button className="link" onClick={() => { setSel({}); setExtra(null); }}>Clear</button>}
+            {(nActive > 0 || extra) && <button className="link" onClick={() => reflow(() => { setSel({}); setExtra(null); })}>Clear</button>}
           </span>
           {view === "wall" && (
             <span className="density" role="group" aria-label="Poster size">
@@ -720,7 +733,7 @@ function Library({ films, customTags, extra, setExtra, onOpen, onAdd, onSettings
           <div className="empty">
             No films match{query ? ` "${q.trim()}"` : ""}.
             <div style={{ marginTop: 12, display: "flex", gap: 18, justifyContent: "center" }}>
-              {(q || nActive > 0 || extra) && <button className="link" onClick={() => { setQ(""); setSel({}); setExtra(null); }}>Clear filters</button>}
+              {(q || nActive > 0 || extra) && <button className="link" onClick={() => reflow(() => { setQ(""); setSel({}); setExtra(null); })}>Clear filters</button>}
               <button className="link" onClick={onAdd}>Add a film</button>
             </div>
           </div>
@@ -2020,7 +2033,6 @@ export default function App() {
     const named = [];
     const name = (el, n) => { el.style.viewTransitionName = n; named.push(el); };
     const clear = () => named.splice(0).forEach((el) => { el.style.viewTransitionName = ""; });
-    const onScreen = (el) => { const r = el.getBoundingClientRect(); return r.right > 0 && r.left < window.innerWidth && r.bottom > 0 && r.top < window.innerHeight; };
     const items = [...shelf.querySelectorAll("[data-key]")].filter(onScreen).slice(0, 8);
     items.forEach((b, i) => name(b.querySelector(".poster"), "see-" + i));
     const title = shelf.querySelector("h2");
