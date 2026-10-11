@@ -5,7 +5,7 @@ import META from "./meta.json";
 import { SEED_WANTLIST } from "./wantlist.js";
 import {
   store, readJSON, fkey, img, tmdb, shapeTmdbMovie, todayISO, thisYear, fmtDate, runtimeLabel, stars,
-  sortKey, letterOf, peopleLabel, hashStr, rng, parseEdition, copyBadges, copyLine, money,
+  sortKey, letterOf, peopleLabel, hashStr, rng, yearsSince, parseEdition, copyBadges, copyLine, money,
   FORMATS, PACKAGES, REGIONS, KNOWN_LABELS, newId,
 } from "./lib.js";
 import { TAGS, makeFilters, filterTest, activeFilterLabels, buildRecipes, dealShelves } from "./shelves.js";
@@ -121,6 +121,7 @@ const I = {
   shuffle: <path d="M3 7h3.5c2.5 0 4 1.3 5.5 5s3 5 5.5 5H21M3 17h3.5c1.6 0 2.8-.6 3.8-1.8M13.7 8.8C14.7 7.6 15.9 7 17.5 7H21m-2.5-2.5L21 7l-2.5 2.5m0 5L21 17l-2.5 2.5" />,
   arrow: <path d="M12 5v14M6 13l6 6 6-6" />,
   wall: <><rect x="3.5" y="3.5" width="7.5" height="7.5" rx="1" /><rect x="13" y="3.5" width="7.5" height="7.5" rx="1" /><rect x="3.5" y="13" width="7.5" height="7.5" rx="1" /><rect x="13" y="13" width="7.5" height="7.5" rx="1" /></>,
+  sliders: <><path d="M4 7h9M17 7h3M4 17h3M11 17h9" /><circle cx="15" cy="7" r="2" /><circle cx="9" cy="17" r="2" /></>,
   list: <><path d="M9 6h11M9 12h11M9 18h11" /><circle cx="4.5" cy="6" r="1" fill="currentColor" /><circle cx="4.5" cy="12" r="1" fill="currentColor" /><circle cx="4.5" cy="18" r="1" fill="currentColor" /></>,
 };
 
@@ -371,25 +372,46 @@ function FilterSheet({ films, defs, filters, setFilters, onClose }) {
 }
 
 // ─── LIBRARY ────────────────────────────────────────────────────────────
-const CHIPS = [
-  ["all", "All", () => true],
-  ["five", "5 stars", (f) => f.rating === 5],
-  ["editions", "Special editions", (f) => f.special],
-  ["4k", "4K", (f) => f.badges.includes("4K")],
-  ["u120", "Under 2 hours", (f) => f.runtime && f.runtime < 120],
-  ["recent", "Recently added", (f) => f.recentRank <= 30],
-  ["never", "Never logged", (f) => !f.lastWatched],
-  ["added", "Added here", (f) => !!f.userAdded],
-  ...Object.entries(TAGS).map(([k, l]) => ["tag:" + k, l, (f) => f.tags.includes(k)]),
-];
-const chipsFor = (films, customTags) => {
-  const labels = [...new Set(films.flatMap((f) => f.copies.map((c) => c.label).filter(Boolean)))].sort();
-  return [
-    ...CHIPS,
-    ...customTags.map((t) => ["tag:" + t, t, (f) => f.tags.includes(t)]),
-    ...labels.map((l) => ["label:" + l, l, (f) => f.copies.some((c) => c.label === l)]),
-  ];
+// One filter model: OR within a group, AND across groups. The chip row only shows shortcuts into it.
+const byCount = (lists) => {
+  const m = new Map();
+  lists.forEach((l) => [...new Set(l)].forEach((v) => m.set(v, (m.get(v) || 0) + 1)));
+  return [...m].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map((x) => x[0]);
 };
+const libGroups = (films, customTags) => {
+  const has = (fn) => (f) => f.copies.some(fn);
+  const formats = FORMATS.filter((x) => films.some(has((c) => c.format === x)));
+  const pkgs = PACKAGES.filter((x) => x !== "Standard" && films.some(has((c) => c.package === x)));
+  const labels = byCount(films.map((f) => f.copies.map((c) => c.label).filter(Boolean)));
+  return [
+    ["format", "Format", [...formats.map((x) => [x, x, has((c) => c.format === x)]), ["none", "Not filled in", (f) => !f.copies.some((c) => c.format)]]],
+    ["package", "Packaging", pkgs.map((x) => [x, x, has((c) => c.package === x)])],
+    ["label", "Distributor", labels.map((x) => [x, x, has((c) => c.label === x)])],
+    ["tag", "Tags", [...Object.entries(TAGS), ...customTags.map((t) => [t, t])].map(([k, l]) => [k, l, (f) => f.tags.includes(k)])],
+    ["shelf", "Collection", [
+      ["recent", "Recently added", (f) => f.recentRank <= 30],
+      ["special", "Special editions", (f) => f.special],
+      ["multi", "More than one copy", (f) => f.copies.length > 1],
+      ["added", "Added in the app", (f) => !!f.userAdded],
+    ]],
+    ["watch", "Watching", [
+      ["five", "5 stars", (f) => f.rating === 5],
+      ["four", "4 stars and up", (f) => (f.rating ?? 0) >= 4],
+      ["never", "Never logged", (f) => !f.lastWatched],
+      ["dusty", "Not seen in 2+ years", (f) => f.lastWatched && yearsSince(f.lastWatched) > 2],
+    ]],
+    ["length", "Runtime", [
+      ["u100", "Under 100 min", (f) => f.runtime && f.runtime < 100],
+      ["u120", "Under 2 hours", (f) => f.runtime && f.runtime < 120],
+      ["epic", "2½ hours+", (f) => f.runtime >= 150],
+    ]],
+  ].filter((g) => g[2].length);
+};
+// Selected options that still exist (a deleted tag or label quietly drops out).
+const activeOpts = (groups, sel) => groups.map(([g, name, opts]) => [g, name, opts.filter((o) => (sel[g] || []).includes(o[0]))]).filter((x) => x[2].length);
+const selTest = (active, skip) => (f) => active.every(([g, , opts]) => g === skip || opts.some((o) => o[2](f)));
+const SHORTCUTS = [["format", "4K"], ["package", "Steelbook"], ["watch", "five"], ["shelf", "recent"], ["watch", "never"], ["shelf", "special"]];
+
 const SORTS = {
   az: ["Title A–Z", (a, b) => a.sortKey.localeCompare(b.sortKey)],
   newest: ["Newest", (a, b) => b.yearNum - a.yearNum || a.sortKey.localeCompare(b.sortKey)],
@@ -400,15 +422,19 @@ const SORTS = {
 };
 
 function Library({ films, customTags, extra, setExtra, onOpen, onAdd, searchFocus, onFocused }) {
-  const chips = useMemo(() => chipsFor(films, customTags), [films, customTags]);
-  const quick = chips.filter((c) => !c[0].startsWith("tag:") && !c[0].startsWith("label:"));
-  const counted = (prefix) => chips.filter((c) => c[0].startsWith(prefix)).map((c) => [...c, films.filter(c[2]).length]);
-  const tagOpts = useMemo(() => counted("tag:"), [chips, films]);
-  const labelOpts = useMemo(() => counted("label:"), [chips, films]);
-  const [picker, setPicker] = useState(null);
-  useBodyLock(!!picker);
+  const groups = useMemo(() => libGroups(films, customTags), [films, customTags]);
+  const [sel, setSel] = useState({});
+  const active = useMemo(() => activeOpts(groups, sel), [groups, sel]);
+  const nActive = active.reduce((n, g) => n + g[2].length, 0);
+  const toggle = (g, k) => setSel((s) => {
+    const cur = s[g] || [];
+    return { ...s, [g]: cur.includes(k) ? cur.filter((x) => x !== k) : [...cur, k] };
+  });
+  const isOn = (g, k) => (sel[g] || []).includes(k);
+  const [filtering, setFiltering] = useState(false);
+  useBodyLock(filtering);
   const [q, setQ] = useState("");
-  const [chip, setChip] = useState("all");
+  const byRecent = isOn("shelf", "recent");
   const [sort, setSort] = useState(() => (SORTS[store.get("shelf-sort")] ? store.get("shelf-sort") : "az"));
   const [view, setView] = useState(() => store.get("shelf-libview") || "list");
   const [cols, setCols] = useState(() => +store.get("shelf-wallcols") || 4);
@@ -442,15 +468,15 @@ function Library({ films, customTags, extra, setExtra, onOpen, onAdd, searchFocu
   const never = films.filter((f) => !f.lastWatched).length;
   const query = q.trim().toLowerCase();
   const list = useMemo(() => {
-    const chipTest = (chips.find((c) => c[0] === chip) || chips[0])[2];
+    const test = selTest(active);
     return films
-      .filter((f) => chipTest(f) && (!extra || extra.test(f)))
+      .filter((f) => test(f) && (!extra || extra.test(f)))
       .filter((f) => !query || f.name.toLowerCase().includes(query) || f.year === query
         || f.directors.some((d) => d.toLowerCase().includes(query)) || f.cast.some((c) => c.toLowerCase().includes(query)))
-      .sort(SORTS[chip === "recent" ? "recent" : sort][1]);
-  }, [films, chips, chip, extra, query, sort]);
-  const grouped = sort === "az" && chip !== "recent";
-  const groups = useMemo(() => {
+      .sort(SORTS[byRecent ? "recent" : sort][1]);
+  }, [films, active, extra, query, sort, byRecent]);
+  const grouped = sort === "az" && !byRecent;
+  const letters = useMemo(() => {
     if (!grouped) return [{ letter: null, films: list }];
     const out = [];
     list.forEach((f) => {
@@ -484,29 +510,24 @@ function Library({ films, customTags, extra, setExtra, onOpen, onAdd, searchFocu
           <div><b>{fives}</b><span>Rated five stars</span></div>
           <div><b>{never}</b><span>Never logged</span></div>
         </div>
-        {extra && (
-          <div className="chips">
+        <div className="chips">
+          <button className={"chip chip-x filter-btn" + (nActive ? " active" : "")} onClick={() => setFiltering(true)} aria-label={nActive ? `Filter, ${nActive} on` : "Filter"}>
+            <Icon d={I.sliders} size={15} sw={2} />Filter{nActive > 0 && <span className="count tnum">{nActive}</span>}
+          </button>
+          {extra && (
             <button className="chip on chip-x" onClick={() => setExtra(null)} aria-label={"Remove filter " + extra.label}>
               {extra.label}<Icon d={I.close} size={12} sw={2.6} />
             </button>
-          </div>
-        )}
-        <div className="chips">
-          {[["tags", "Tags", tagOpts], ["labels", "Labels", labelOpts]].map(([kind, name, opts]) => {
-            const sel = opts.find((o) => o[0] === chip);
-            if (!opts.length && kind === "labels") return null;
-            return sel ? (
-              <button key={kind} className="chip on chip-x" onClick={() => setChip("all")} aria-label={`Clear ${name.toLowerCase()} filter ${sel[1]}`}>
-                {sel[1]}<Icon d={I.close} size={12} sw={2.6} />
-              </button>
-            ) : (
-              <button key={kind} className="chip chip-x" onClick={() => setPicker(kind)}>{name}<Icon d={I.down} size={12} sw={2.6} /></button>
-            );
+          )}
+          {active.flatMap(([g, , opts]) => opts.map(([k, l]) => (
+            <button key={g + k} className="chip on chip-x" onClick={() => toggle(g, k)} aria-label={"Remove filter " + l}>
+              {l}<Icon d={I.close} size={12} sw={2.6} />
+            </button>
+          )))}
+          {!nActive && !extra && SHORTCUTS.map(([g, k]) => {
+            const opt = groups.find((x) => x[0] === g)?.[2].find((o) => o[0] === k);
+            return opt && <button key={g + k} className="chip" onClick={() => toggle(g, k)}>{opt[1]}</button>;
           })}
-          <span aria-hidden="true" style={{ width: 1, flexShrink: 0, background: "var(--rule)", margin: "4px 2px" }} />
-          {quick.map(([k, l]) => (
-            <button key={k} className={"chip" + (chip === k ? " on" : "")} aria-pressed={chip === k} onClick={() => setChip(k)}>{l}</button>
-          ))}
         </div>
         <div className="lib-bar">
           <span className="tnum">{list.length === films.length ? `${list.length} films` : `${list.length} of ${films.length} films`}</span>
@@ -520,7 +541,7 @@ function Library({ films, customTags, extra, setExtra, onOpen, onAdd, searchFocu
             </span>
           )}
           <label className="sort">
-            {SORTS[chip === "recent" ? "recent" : sort][0]}<Icon d={I.down} size={12} sw={2.6} />
+            {SORTS[byRecent ? "recent" : sort][0]}<Icon d={I.down} size={12} sw={2.6} />
             <select value={sort} onChange={(e) => { setSort(e.target.value); store.set("shelf-sort", e.target.value); }} aria-label="Sort by">
               {Object.entries(SORTS).map(([k, [l]]) => <option key={k} value={k}>{l}</option>)}
             </select>
@@ -534,21 +555,21 @@ function Library({ films, customTags, extra, setExtra, onOpen, onAdd, searchFocu
           <div className="empty">
             No films match{query ? ` "${q.trim()}"` : ""}.
             <div style={{ marginTop: 12, display: "flex", gap: 18, justifyContent: "center" }}>
-              {(q || chip !== "all" || extra) && <button className="link" onClick={() => { setQ(""); setChip("all"); setExtra(null); }}>Clear filters</button>}
+              {(q || nActive > 0 || extra) && <button className="link" onClick={() => { setQ(""); setSel({}); setExtra(null); }}>Clear filters</button>}
               <button className="link" onClick={onAdd}>Add a film</button>
             </div>
           </div>
         )}
         {view === "wall" && list.length > 0 && (
           <div className="wall" style={{ "--cols": cols }} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd}>
-            {groups.flatMap((g) => g.films.map((f, i) => (
+            {letters.flatMap((g) => g.films.map((f, i) => (
               <button key={f.key} id={grouped && i === 0 ? "L-" + g.letter : undefined} onClick={() => onOpen(f)} aria-label={`${f.name} (${f.year})`}>
                 <Poster path={f.posterPath} title={f.name} size={cols >= 5 ? "w185" : "w342"} />
               </button>
             )))}
           </div>
         )}
-        {view === "list" && groups.map((g) => (
+        {view === "list" && letters.map((g) => (
           <div key={g.letter || "all"}>
             {g.letter && <div className="letter" id={"L-" + g.letter}>{g.letter}</div>}
             {g.films.map((f) => (
@@ -569,41 +590,60 @@ function Library({ films, customTags, extra, setExtra, onOpen, onAdd, searchFocu
         ))}
       </div>
 
-      {picker && (
-        <Sheet title={picker === "tags" ? "Filter by tag" : "Filter by label"} onClose={() => setPicker(null)}>
-          {(picker === "tags" ? tagOpts : labelOpts).length === 0 && <div className="empty">No labels yet. Add one to a copy on any film's page.</div>}
-          <div>
-            {picker === "tags" && <div className="section-label">Built in</div>}
-            {(picker === "tags" ? tagOpts.filter((o) => TAGS[o[0].slice(4)]) : labelOpts).map(([k, l, , n]) => (
-              <button key={k} className="list-row" style={{ width: "100%", textAlign: "left" }} onClick={() => { setChip(k); setPicker(null); }} disabled={!n}>
-                <span className="grow" style={{ opacity: n ? 1 : 0.4 }}>{l}</span>
-                <span className="muted tnum">{n}</span>
-                {chip === k && <span className="accent" style={{ display: "grid" }}><Icon d={I.check} size={16} sw={2.6} /></span>}
-              </button>
-            ))}
-          </div>
-          {picker === "tags" && (
-            <div>
-              <div className="section-label">Yours</div>
-              {tagOpts.filter((o) => !TAGS[o[0].slice(4)]).map(([k, l, , n]) => (
-                <button key={k} className="list-row" style={{ width: "100%", textAlign: "left" }} onClick={() => { setChip(k); setPicker(null); }} disabled={!n}>
-                  <span className="grow" style={{ opacity: n ? 1 : 0.4 }}>{l}</span>
-                  <span className="muted tnum">{n}</span>
-                  {chip === k && <span className="accent" style={{ display: "grid" }}><Icon d={I.check} size={16} sw={2.6} /></span>}
-                </button>
-              ))}
-              {customTags.length === 0 && <div className="muted" style={{ fontSize: 14, padding: "8px 0" }}>Make your own tags from any film's page, under Tags.</div>}
-            </div>
-          )}
-        </Sheet>
+      {filtering && (
+        <LibraryFilter films={extra ? films.filter(extra.test) : films} groups={groups} sel={sel} active={active}
+          onToggle={toggle} onReset={() => setSel({})} onClose={() => setFiltering(false)} />
       )}
 
       {grouped && list.length > 40 && (
         <nav className={"rail" + (railOn ? " on" : "")} aria-label="Jump to letter" aria-hidden={!railOn}>
-          {groups.map((g) => <button key={g.letter} onClick={() => jump(g.letter)} aria-label={"Jump to " + g.letter}>{g.letter}</button>)}
+          {letters.map((g) => <button key={g.letter} onClick={() => jump(g.letter)} aria-label={"Jump to " + g.letter}>{g.letter}</button>)}
         </nav>
       )}
     </>
+  );
+}
+
+// Everything you can narrow the Library by, in one sheet. Counts are live: each one says
+// how many films you'd see if you tapped it, given everything else that's on.
+function LibraryFilter({ films, groups, sel, active, onToggle, onReset, onClose }) {
+  const [more, setMore] = useState(false);
+  const shown = films.filter(selTest(active)).length;
+  const counts = useMemo(() => Object.fromEntries(groups.map(([g, , opts]) => {
+    const base = films.filter(selTest(active, g));
+    return [g, Object.fromEntries(opts.map(([k, , t]) => [k, base.filter(t).length]))];
+  })), [films, groups, active]);
+  const on = (g, k) => (sel[g] || []).includes(k);
+  return (
+    <Sheet title="Filter" onClose={onClose} tall
+      left={active.length ? <button className="left" onClick={onReset}>Reset</button> : null}
+      foot={<button className="btn btn-primary" onClick={onClose}>{shown ? `Show ${shown} film${shown === 1 ? "" : "s"}` : "No films match"}</button>}>
+      {groups.map(([g, name, opts]) => {
+        const cap = g === "label" && !more ? 10 : Infinity;
+        const visible = opts.filter((o, i) => i < cap || on(g, o[0]));
+        const picked = (sel[g] || []).filter((k) => opts.some((o) => o[0] === k)).length;
+        return (
+          <section key={g} className="fgroup">
+            <div className="fgroup-head">
+              <h3>{name}</h3>
+              {picked > 1 && <span className="muted">Any of {picked}</span>}
+            </div>
+            <div className="fchips">
+              {visible.map(([k, l]) => {
+                const n = counts[g][k];
+                return (
+                  <button key={k} className={"chip fchip" + (on(g, k) ? " on" : "")} aria-pressed={on(g, k)} disabled={!n && !on(g, k)} onClick={() => onToggle(g, k)}>
+                    {l}<span className="n tnum">{n}</span>
+                  </button>
+                );
+              })}
+              {opts.length > visible.length && <button className="chip fchip more" onClick={() => setMore(true)}>All {opts.length}</button>}
+            </div>
+            {g === "tag" && opts.length <= Object.keys(TAGS).length && <p className="muted fnote">Make your own tags from any film's page.</p>}
+          </section>
+        );
+      })}
+    </Sheet>
   );
 }
 
