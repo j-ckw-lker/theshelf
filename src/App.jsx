@@ -83,6 +83,9 @@ function deriveFilm(raw, userData, watchLog) {
     tags: u.tags || [],
     note: u.note || "",
     customPoster: u.poster || null,
+    backdrop: u.backdrop || f.backdrop || null,
+    customBackdrop: u.backdrop || null,
+    backdropPos: u.backdropPos || "center",
     posterPath: u.poster || f.poster || null,
     genres: f.genres || [], directors: f.directors || [], dop: f.dop || [], music: f.music || [],
     cast: f.cast || [], countries: f.countries || [], keywords: f.keywords || [],
@@ -127,6 +130,7 @@ const I = {
   arrow: <path d="M12 5v14M6 13l6 6 6-6" />,
   doubles: <><rect x="2.75" y="5" width="8.5" height="14" rx="1.5" /><rect x="12.75" y="5" width="8.5" height="14" rx="1.5" /></>,
   gear: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" /></>,
+  image: <><rect x="3.5" y="5" width="17" height="14" rx="2" /><circle cx="9" cy="10" r="1.6" /><path d="m4 17 5-4.5 3.5 3 3-2.5 4.5 4" /></>,
   swap: <path d="M7 4 3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7" />,
   wall: <><rect x="3.5" y="3.5" width="7.5" height="7.5" rx="1" /><rect x="13" y="3.5" width="7.5" height="7.5" rx="1" /><rect x="3.5" y="13" width="7.5" height="7.5" rx="1" /><rect x="13" y="13" width="7.5" height="7.5" rx="1" /></>,
   sliders: <><path d="M4 7h9M17 7h3M4 17h3M11 17h9" /><circle cx="15" cy="7" r="2" /><circle cx="9" cy="17" r="2" /></>,
@@ -277,7 +281,7 @@ function Home({ films, defs, recipes, filters, home, setHome, onOpen, onSeeAll, 
         <div className="hero">
           <div className="hero-bg">
             {pick && pick.backdrop && (
-              <img key={pick.backdrop} src={img(pick.backdrop, "w780")} srcSet={`${img(pick.backdrop, "w780")} 780w, ${img(pick.backdrop, "w1280")} 1280w`}
+              <img key={pick.backdrop} style={{ objectPosition: "center " + pick.backdropPos }} src={img(pick.backdrop, "w780")} srcSet={`${img(pick.backdrop, "w780")} 780w, ${img(pick.backdrop, "w1280")} 1280w`}
                 sizes="(max-width: 560px) 100vw, 560px" alt="" />
             )}
           </div>
@@ -788,12 +792,13 @@ function FilmPage({ film, films, ix, onNight, onBuildAround, allTags, backLabel,
     <div className="film-page" ref={ref} role="dialog" aria-label={film.name}>
       <div className="film-inner">
         <div className="film-hero">
-          {film.backdrop && <img src={img(film.backdrop, "w780")} alt="" />}
+          {film.backdrop && <img src={img(film.backdrop, "w780")} alt="" style={{ objectPosition: "center " + film.backdropPos }} />}
+          {film.tmdb && <button className="icon-btn glass banner-edit" onClick={() => onPicker("banner")} aria-label="Change banner"><Icon d={I.image} size={17} sw={2} /></button>}
           <button className="back" onClick={onBack}><Icon d={I.back} size={20} sw={2.4} /><span>{backLabel}</span></button>
         </div>
 
         <div className="film-head">
-          <button onClick={onPicker} aria-label="Change poster" disabled={!film.tmdb}>
+          <button onClick={() => onPicker("poster")} aria-label="Change poster" disabled={!film.tmdb}>
             <Poster path={film.posterPath} title={film.name} eager />
           </button>
           <div style={{ minWidth: 0, paddingBottom: 2 }}>
@@ -816,7 +821,7 @@ function FilmPage({ film, films, ix, onNight, onBuildAround, allTags, backLabel,
             <button className={"btn " + (loggedToday ? "btn-done" : "btn-primary")} onClick={() => (loggedToday ? onUnlog(film.key) : onLog(film.key))} aria-pressed={loggedToday}>
               {loggedToday ? <><Icon d={I.check} size={16} sw={2.6} />Watched today</> : "Watched today"}
             </button>
-            <button className="btn btn-outline" onClick={onPicker} disabled={!film.tmdb}>Change poster</button>
+            <button className="btn btn-outline" onClick={() => onPicker("poster")} disabled={!film.tmdb}>Poster & banner</button>
           </div>
 
           <section>
@@ -943,8 +948,10 @@ function FilmPage({ film, films, ix, onNight, onBuildAround, allTags, backLabel,
   );
 }
 
-function PosterPicker({ film, onPick, onClose }) {
-  const [posters, setPosters] = useState(null);
+// Poster and banner art from TMDB. Posters: English first, then textless. Banners: textless first.
+function PosterPicker({ film, startTab = "poster", onPick, onClose }) {
+  const [tab, setTab] = useState(startTab);
+  const [art, setArt] = useState(null);
   const [error, setError] = useState("");
   const [shown, setShown] = useState(32);
   useEffect(() => {
@@ -952,29 +959,54 @@ function PosterPicker({ film, onPick, onClose }) {
     tmdb(`/${film.tmdbType || "movie"}/${film.tmdb}/images`)
       .then((res) => {
         if (dead) return;
-        const rank = (p) => (p.iso_639_1 === "en" ? 0 : p.iso_639_1 == null ? 1 : 2);
-        setPosters((res.posters || []).slice().sort((a, b) => rank(a) - rank(b) || b.vote_average - a.vote_average || b.vote_count - a.vote_count));
+        const byVotes = (a, b) => b.vote_average - a.vote_average || b.vote_count - a.vote_count;
+        const pRank = (p) => (p.iso_639_1 === "en" ? 0 : p.iso_639_1 == null ? 1 : 2);
+        const bRank = (p) => (p.iso_639_1 == null ? 0 : p.iso_639_1 === "en" ? 1 : 2);
+        setArt({
+          poster: (res.posters || []).slice().sort((a, b) => pRank(a) - pRank(b) || byVotes(a, b)),
+          banner: (res.backdrops || []).slice().sort((a, b) => bRank(a) - bRank(b) || byVotes(a, b)),
+        });
       })
       .catch((e) => !dead && setError(e.message));
     return () => { dead = true; };
   }, [film.tmdb, film.tmdbType]);
+  useEffect(() => setShown(tab === "poster" ? 32 : 16), [tab]);
+  const list = art ? art[tab] : null;
+  const current = tab === "poster" ? film.posterPath : film.backdrop;
+  const custom = tab === "poster" ? film.customPoster : film.customBackdrop;
   const badge = (p) => (p.iso_639_1 == null ? "No text" : p.iso_639_1 === "en" ? null : p.iso_639_1.toUpperCase());
+  const noun = tab === "poster" ? "posters" : "banners";
 
   return (
-    <Sheet title="Choose a poster" onClose={onClose} tall
-      left={film.customPoster ? <button className="left" onClick={() => onPick(null)}>Use default</button> : null}>
-      <div className="muted" style={{ fontSize: 13, marginTop: -4 }}>
-        {posters ? `${posters.length} posters on TMDB. English first, then textless.` : error ? "" : "Loading posters…"}
+    <Sheet title={tab === "poster" ? "Choose a poster" : "Choose a banner"} onClose={onClose} tall
+      left={custom ? <button className="left" onClick={() => onPick(tab, null)}>Use default</button> : null}>
+      <div className="seg" role="tablist" aria-label="Artwork">
+        {[["poster", "Poster"], ["banner", "Banner"]].map(([k, l]) => (
+          <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{l}</button>
+        ))}
       </div>
-      {error && <div className="empty">Couldn't load posters: {error}</div>}
-      {posters && posters.length === 0 && <div className="empty">TMDB has no posters for this film yet.</div>}
-      {posters && posters.length > 0 && (
-        <div className="picker-grid">
-          {posters.slice(0, shown).map((p) => {
-            const on = p.file_path === film.posterPath;
+      {tab === "banner" && film.backdrop && (
+        <div className="banner-preview">
+          <img src={img(film.backdrop, "w780")} alt="" style={{ objectPosition: "center " + film.backdropPos }} />
+          <div className="seg banner-pos" role="group" aria-label="Banner framing">
+            {[["top", "Top"], ["center", "Middle"], ["bottom", "Bottom"]].map(([k, l]) => (
+              <button key={k} className={film.backdropPos === k ? "on" : ""} aria-pressed={film.backdropPos === k} onClick={() => onPick("pos", k)}>{l}</button>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="muted" style={{ fontSize: 13, marginTop: -4 }}>
+        {list ? `${list.length} ${noun} on TMDB. ${tab === "poster" ? "English first, then textless." : "Textless first, which suits the banner best."}` : error ? "" : "Loading artwork…"}
+      </div>
+      {error && <div className="empty">Couldn't load artwork: {error}</div>}
+      {list && list.length === 0 && <div className="empty">TMDB has no {noun} for this film yet.</div>}
+      {list && list.length > 0 && (
+        <div className={tab === "poster" ? "picker-grid" : "picker-grid wide"}>
+          {list.slice(0, shown).map((p) => {
+            const on = p.file_path === current;
             return (
-              <button key={p.file_path} className={"picker-item" + (on ? " on" : "")} aria-pressed={on} aria-label="Use this poster" onClick={() => onPick(p.file_path)}>
-                <Poster path={p.file_path} size="w185" />
+              <button key={p.file_path} className={"picker-item" + (on ? " on" : "")} aria-pressed={on} aria-label={tab === "poster" ? "Use this poster" : "Use this banner"} onClick={() => onPick(tab, p.file_path)}>
+                {tab === "poster" ? <Poster path={p.file_path} size="w185" /> : <img className="banner-thumb" src={img(p.file_path, "w300")} alt="" loading="lazy" />}
                 {badge(p) && <span className="picker-badge">{badge(p)}</span>}
                 {on && <span className="picker-check"><Icon d={I.check} size={12} sw={3} /></span>}
               </button>
@@ -982,7 +1014,7 @@ function PosterPicker({ film, onPick, onClose }) {
           })}
         </div>
       )}
-      {posters && shown < posters.length && <button className="btn btn-outline" onClick={() => setShown(shown + 32)}>Show more posters</button>}
+      {list && shown < list.length && <button className="btn btn-outline" onClick={() => setShown(shown + (tab === "poster" ? 32 : 16))}>Show more {noun}</button>}
     </Sheet>
   );
 }
@@ -1844,7 +1876,7 @@ export default function App() {
       {top && (
         <FilmPage key="film" film={top} films={films} ix={ix} onNight={setNight} onBuildAround={buildAround} allTags={allTags} onAddTag={D.addTag} onRemoveTag={D.removeTag}
           onEditCopy={(c) => setCopyEdit({ key: top.key, copy: c })} onEditDetails={() => setDetailsFor(top.key)} backLabel={backLabel} onBack={back} onOpen={openFilm} onPerson={onPerson}
-          onUpdate={D.updateFilm} onLog={D.logWatch} onUnlog={D.unlogWatch} onRemove={D.removeFilm} onPicker={() => setPicking(top.key)} />
+          onUpdate={D.updateFilm} onLog={D.logWatch} onUnlog={D.unlogWatch} onRemove={D.removeFilm} onPicker={(t) => setPicking({ key: top.key, tab: t })} />
       )}
 
       <nav className="tabbar" aria-label="Sections">
@@ -1873,9 +1905,13 @@ export default function App() {
       )}
       {detailsFor && byKey.get(detailsFor) && <DetailsSheet film={byKey.get(detailsFor)} onUpdate={D.updateFilm} onClose={() => setDetailsFor(null)} />}
       {showFilters && <FilterSheet films={films} defs={defs} filters={filters} setFilters={setFilters} onClose={() => setShowFilters(false)} />}
-      {picking && byKey.get(picking) && (
-        <PosterPicker film={byKey.get(picking)} onClose={() => setPicking(null)}
-          onPick={(p) => { D.updateFilm(picking, { poster: p }); setPicking(null); }} />
+      {picking && byKey.get(picking.key) && (
+        <PosterPicker key={picking.key} film={byKey.get(picking.key)} startTab={picking.tab} onClose={() => setPicking(null)}
+          onPick={(kind, v) => {
+            if (kind === "pos") return D.updateFilm(picking.key, { backdropPos: v === "center" ? undefined : v });
+            D.updateFilm(picking.key, kind === "poster" ? { poster: v } : { backdrop: v, backdropPos: undefined });
+            if (kind === "poster") setPicking(null);
+          }} />
       )}
       {adding && <AddSheet prefill={adding} existing={films} onAdd={(f) => { D.addFilm({ ...f, addedAt: todayISO() }); setAdding(null); }} onClose={() => setAdding(null)} />}
     </div>

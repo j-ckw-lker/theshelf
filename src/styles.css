@@ -330,3 +330,12 @@ img { display: block; }
 .night-n { position: absolute; top: 6px; left: 6px; z-index: 1; width: 22px; height: 22px; border-radius: 11px; display: grid; place-items: center; font-size: 12px; font-weight: 700; background: var(--accent); color: var(--bg); }
 .night-swap { position: absolute; left: 50%; top: 32%; transform: translate(-50%, -50%); width: 38px; height: 38px; border-radius: 19px; display: grid; place-items: center; background: var(--sheet); color: var(--accent); border: 0.5px solid var(--rule); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5); }
 .pair { text-align: left; }
+
+/* Banner picker */
+.picker-grid.wide { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.banner-thumb { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 6px; display: block; background: var(--bg-2); }
+.picker-item.on .banner-thumb { outline: 2.5px solid var(--accent); outline-offset: 2px; }
+.banner-preview { position: relative; border-radius: 10px; overflow: hidden; aspect-ratio: 390 / 270; background: var(--bg-2); }
+.banner-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.banner-pos { position: absolute; left: 10px; right: 10px; bottom: 10px; background: rgba(0, 0, 0, 0.55); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+.banner-edit { position: absolute; right: 14px; top: calc(var(--top) + 9px); z-index: 2; }
