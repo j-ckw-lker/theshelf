@@ -260,7 +260,7 @@ function Home({ films, defs, recipes, filters, home, setHome, onOpen, onSeeAll, 
     setHome({ ...home, pick: n });
   };
   const refresh = useCallback(() => {
-    setHome((h) => ({ ...h, seed: h.seed + 1, pick: h.pick + 1, more: 0 }));
+    setHome((h) => ({ ...h, seed: h.seed + 1, more: 0 }));
   }, [setHome]);
   const { pull, refreshing, dragging } = usePullToRefresh(refresh, active);
 
