@@ -6,6 +6,7 @@ const ALLOWED = [
   /^\/search\/movie$/,
   /^\/(movie|tv)\/\d+$/,
   /^\/(movie|tv)\/\d+\/images$/,
+  /^\/person\/\d+$/,
 ];
 const PASS_PARAMS = ["query", "year", "include_image_language", "language", "page", "append_to_response"];
 

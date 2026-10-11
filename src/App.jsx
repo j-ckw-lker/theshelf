@@ -846,6 +846,87 @@ function LibraryFilter({ films, groups, sel, active, onToggle, onReset, onClose 
   );
 }
 
+// ─── DIRECTOR ───────────────────────────────────────────────────────────
+// Photo, dates and a short bio from TMDB (looked up once per person, then kept on the device),
+// plus what your own shelf says about them.
+const peopleCache = readJSON("shelf-people", {});
+function useDirector(film) {
+  const name = film.directors[0];
+  const [info, setInfo] = useState(() => peopleCache[name] || null);
+  useEffect(() => {
+    setInfo(peopleCache[name] || null);
+    if (peopleCache[name] || !film.tmdb || film.tmdbType === "tv") return;
+    let dead = false;
+    (async () => {
+      try {
+        const m = await tmdb(`/movie/${film.tmdb}`, { append_to_response: "credits" });
+        const crew = (m.credits?.crew || []).find((c) => c.job === "Director" && c.name === name) || (m.credits?.crew || []).find((c) => c.job === "Director");
+        if (!crew) return;
+        const p = await tmdb(`/person/${crew.id}`);
+        const out = { id: crew.id, photo: p.profile_path || crew.profile_path || null, born: p.birthday || null, died: p.deathday || null, place: p.place_of_birth || null, bio: (p.biography || "").trim() };
+        peopleCache[name] = out;
+        store.set("shelf-people", JSON.stringify(peopleCache));
+        if (!dead) setInfo(out);
+      } catch {}
+    })();
+    return () => { dead = true; };
+  }, [name, film.tmdb]);
+  return info;
+}
+
+function DirectorCard({ film, films, onOpen, onPerson }) {
+  const name = film.directors[0];
+  const info = useDirector(film);
+  const [open, setOpen] = useState(false);
+  useEffect(() => setOpen(false), [film.key]);
+  const theirs = films.filter((f) => f.directors.includes(name));
+  const rated = theirs.filter((f) => f.rating != null);
+  const avg = rated.length ? rated.reduce((n, f) => n + f.rating, 0) / rated.length : null;
+  const rank = META.rankedDirectors.findIndex((d) => d.name === name);
+  const others = theirs.filter((f) => f.key !== film.key).sort((a, b) => b.yearNum - a.yearNum);
+  const year = (d) => (d ? d.slice(0, 4) : null);
+  const dates = info?.born ? (info.died ? `${year(info.born)}–${year(info.died)}` : `Born ${year(info.born)}`) : null;
+  const place = info?.place ? info.place.split(",").map((x) => x.trim()).slice(0, 2).join(", ") : null;
+  const [photoFailed, setPhotoFailed] = useState(false);
+  const bio = info?.bio || "";
+  const short = bio.split(/(?<=[.!?])\s+/).slice(0, 2).join(" ");
+  return (
+    <section className="director">
+      <div className="section-label">{film.directors.length > 1 ? "Directed by" : "Director"}</div>
+      <button className="director-head" onClick={() => onPerson(name)} aria-label={`${name}: everything on your shelf`}>
+        <span className="director-photo">
+          {info?.photo && !photoFailed ? <img src={img(info.photo, "w185")} alt="" onError={() => setPhotoFailed(true)} /> : <span>{name.split(" ").map((w) => w[0]).slice(0, 2).join("")}</span>}
+        </span>
+        <span className="director-text">
+          <strong>{peopleLabel(film.directors)}</strong>
+          {(dates || place) && <span className="muted">{[dates, place].filter(Boolean).join(" · ")}</span>}
+          <span className="director-stats tnum">
+            <span><b>{theirs.length}</b> on your shelf</span>
+            {avg != null && <span><b>{avg.toFixed(1)}★</b> your average</span>}
+            {rank >= 0 && <span><b>#{rank + 1}</b> in your rankings</span>}
+          </span>
+        </span>
+        <Icon d={I.chev} size={16} sw={2.4} />
+      </button>
+      {bio && (
+        <p className={"director-bio" + (open ? " open" : "")} onClick={() => setOpen(!open)}>
+          {open ? bio : short}{!open && bio.length > short.length && <span className="accent"> More</span>}
+        </p>
+      )}
+      {others.length > 0 && (
+        <div className="shelf-row" style={{ margin: "4px -20px 0" }}>
+          {others.map((f) => (
+            <button key={f.key} className="shelf-item" onClick={() => onOpen(f)}>
+              <Poster path={f.posterPath} title={f.name} size="w185" />
+              <span>{f.year}{f.rating != null ? " · " + stars(f.rating) : ""}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 // ─── FILM PAGE ──────────────────────────────────────────────────────────
 function FilmPage({ film, films, ix, onNight, onBuildAround, allTags, backLabel, onBack, onOpen, onPerson, onUpdate, onLog, onUnlog, onRemove, onPicker, onAddTag, onRemoveTag, onEditCopy, onEditDetails }) {
   const [note, setNote] = useState(film.note);
@@ -922,7 +1003,6 @@ function FilmPage({ film, films, ix, onNight, onBuildAround, allTags, backLabel,
   const today = todayISO();
   const loggedToday = film.lastWatched === today;
   const pairsWith = useMemo(() => (ix ? partnersFor(ix, film, 3) : []), [ix, film]);
-  const more = film.directors.length ? films.filter((f) => f.key !== film.key && f.directors.includes(film.directors[0])) : [];
   const owned = useMemo(() => new Set(films.map((f) => f.tmdb)), [films]);
   const coll = film.collection && COLLECTIONS[film.collection];
   const collOwned = coll ? coll.parts.filter((p) => owned.has(p[0])).length : 0;
@@ -991,6 +1071,8 @@ function FilmPage({ film, films, ix, onNight, onBuildAround, allTags, backLabel,
               </button>
             ))}
           </section>
+
+          {film.directors.length > 0 && <DirectorCard film={film} films={films} onOpen={onOpen} onPerson={onPerson} />}
 
           <dl className="dl">
             <div><dt>Last watched</dt><dd className="tnum">{film.lastWatched ? fmtDate(film.lastWatched) : "Never logged"}</dd></div>
@@ -1074,23 +1156,6 @@ function FilmPage({ film, films, ix, onNight, onBuildAround, allTags, backLabel,
                   </button>
                 );
               })}
-            </section>
-          )}
-
-          {more.length > 0 && (
-            <section>
-              <div className="stat-head" style={{ marginBottom: 10 }}>
-                <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>More from {film.directors[0].split(" ").slice(-1)[0]}</h2>
-                <span className="muted" style={{ fontSize: 13 }}>{more.length} more on your shelf</span>
-              </div>
-              <div className="shelf-row" style={{ margin: "0 -20px" }}>
-                {more.sort((a, b) => b.yearNum - a.yearNum).map((f) => (
-                  <button key={f.key} className="shelf-item" onClick={() => onOpen(f)}>
-                    <Poster path={f.posterPath} title={f.name} size="w185" />
-                    <span>{f.year}</span>
-                  </button>
-                ))}
-              </div>
             </section>
           )}
 
