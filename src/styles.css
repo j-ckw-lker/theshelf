@@ -273,3 +273,12 @@ img { display: block; }
 .fjump button { flex-shrink: 0; font-size: 13px; color: var(--label-2); padding: 5px 10px; border-radius: 7px; background: rgba(255, 255, 255, 0.06); white-space: nowrap; }
 .fjump button.on { color: var(--accent); background: rgba(240, 167, 66, 0.14); font-weight: 600; }
 .fgroup { scroll-margin-top: 4px; }
+
+/* Double features and dealing more */
+.pair { flex-shrink: 0; width: 176px; display: flex; flex-direction: column; gap: 6px; scroll-snap-align: start; }
+.pair-posters { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; border-radius: 10px; background: rgba(255, 255, 255, 0.05); border: 0.5px solid var(--rule-soft); }
+.pair-posters button:active .poster { transform: scale(0.97); }
+.pair-posters .poster { transition: transform 0.15s; }
+.pair-why { font-size: 12px; color: var(--label-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.deal-more { padding: 28px 20px 8px; display: flex; justify-content: center; }
+.deal-more .btn { min-width: 200px; }

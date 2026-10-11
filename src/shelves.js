@@ -158,6 +158,44 @@ export function buildRecipes(films, customTags = []) {
   films.forEach((f) => f.copies.forEach((c) => c.label && labels.set(c.label, (labels.get(c.label) || 0) + 1)));
   labels.forEach((n, l) => add({ id: "label:" + l, title: "From " + l, min: 3, weight: 2, test: (f) => f.copies.some((c) => c.label === l) }));
 
+  // ── Shelves that react to you ──
+  // Because you watched: whatever you logged most recently, and its people.
+  const last = films.filter((f) => f.lastWatched).sort((a, b) => b.lastWatched.localeCompare(a.lastWatched))[0];
+  if (last) {
+    const kin = (f) => f.key !== last.key && (
+      f.directors.some((d) => last.directors.includes(d)) || f.dop.some((d) => last.dop.includes(d))
+      || f.music.some((m) => last.music.includes(m)) || (last.collection && f.collection === last.collection));
+    const why = (f) => {
+      const d = f.directors.find((x) => last.directors.includes(x));
+      if (d) return "Also " + d.split(" ").slice(-1)[0];
+      const p = f.dop.find((x) => last.dop.includes(x));
+      if (p) return "Shot by " + p.split(" ").slice(-1)[0];
+      const m = f.music.find((x) => last.music.includes(x));
+      return m ? "Score: " + m.split(" ").slice(-1)[0] : "Same series";
+    };
+    add({ id: "because", title: "Because you watched " + last.name, min: 3, weight: 6, test: kin, sub: why });
+  }
+  // 4K discs that haven't been played since they came home (or ever).
+  const bought4k = (f) => f.copies.filter((c) => c.format === "4K").map((c) => c.purchased).filter(Boolean).sort()[0];
+  add({
+    id: "4k-unplayed", title: "4K discs still waiting for a spin", min: 3, weight: 3,
+    test: (f) => f.badges.includes("4K") && (!f.lastWatched || (bought4k(f) && f.lastWatched < bought4k(f))),
+    sub: (f) => (f.lastWatched ? "Last " + f.lastWatched.slice(0, 4) : "Never logged"),
+  });
+  // Directors who've given you a five-star film, and their other work you haven't revisited.
+  const fiveDirs = new Set(films.filter((f) => f.rating === 5).flatMap((f) => f.directors));
+  add({
+    id: "five-dirs", title: "Five-star directors, gathering dust", weight: 3,
+    test: (f) => f.directors.some((d) => fiveDirs.has(d)) && (!f.lastWatched || yearsSince(f.lastWatched) > 2),
+    sub: (f) => f.directors[0],
+  });
+  // Double features: two films (different directors, different series) sharing at least two specific keywords.
+  const pairs = doubleFeatures(films.filter((f) => !f.tags.includes("sell")));
+  if (pairs.length >= 6) {
+    const inPair = new Set(pairs.flatMap((p) => [p.a.key, p.b.key]));
+    out.push({ id: "pairs", kind: "pairs", title: "Double features", weight: 3, films: pairs, test: (f) => inPair.has(f.key), count: pairs.length });
+  }
+
   // Seasonal shelves jump the queue in their month.
   const month = new Date().getMonth();
   if (month === 9) add({ id: "halloween", title: "Halloween season", weight: 10, test: (f) => f.genres.includes("Horror") || f.keywords.includes("halloween") });
@@ -166,9 +204,40 @@ export function buildRecipes(films, customTags = []) {
   return out;
 }
 
+const BORING_KW = new Set(["duringcreditsstinger", "aftercreditsstinger", "superhero", "based on comic", "sequel", "remake",
+  "based on novel or book", "based on true story", "biography", "woman director", "murder", "new york city", "los angeles, california",
+  "based on video game", "based on young adult novel", "anime", "live action remake", "duringcreditsstinger"]);
+function doubleFeatures(films) {
+  const idx = new Map();
+  films.forEach((f, i) => f.keywords.forEach((k) => { if (!BORING_KW.has(k)) (idx.get(k) || idx.set(k, []).get(k)).push(i); }));
+  const shared = new Map();
+  idx.forEach((list, k) => {
+    if (list.length < 2 || list.length > 25) return;
+    for (let x = 0; x < list.length; x++) for (let y = x + 1; y < list.length; y++) {
+      const key = list[x] * 10000 + list[y];
+      (shared.get(key) || shared.set(key, []).get(key)).push(k);
+    }
+  });
+  const out = [];
+  shared.forEach((ks, key) => {
+    if (ks.length < 2) return;
+    const a = films[Math.floor(key / 10000)], b = films[key % 10000];
+    if (a.directors[0] && a.directors[0] === b.directors[0]) return;
+    if (a.collection && a.collection === b.collection) return;
+    const words = (f) => new Set(f.name.toLowerCase().match(/[a-z0-9]{4,}/g) || []);
+    const wa = words(a);
+    if ([...words(b)].some((w) => wa.has(w))) return; // Batman + The Batman isn't a double feature, it's homework
+    const gap = Math.abs(a.yearNum - b.yearNum);
+    out.push({ key: a.key + "+" + b.key, a: a.yearNum <= b.yearNum ? a : b, b: a.yearNum <= b.yearNum ? b : a, why: ks.slice(0, 2).join(" · ").replace(/^\w/, (c) => c.toUpperCase()), score: ks.length + (gap >= 20 ? 1 : 0) });
+  });
+  return out.sort((x, y) => y.score - x.score).slice(0, 60);
+}
+
 // Deal four shelves: a weighted shuffle (seasonal and your own tags/labels come up more often,
 // but nothing is pinned), at most one "person" shelf, films shuffled within each.
-export function dealShelves(recipes, seed, count = 4) {
+// Deal the first `count` shelves of today's order. Decisions only look backwards, so asking for more
+// later appends without disturbing what's already on screen. People shelves: 2 in the first six, +1 per three after.
+export function dealShelves(recipes, seed, count = 6) {
   const rand = rng(seed);
   const rest = recipes
     .map((r) => ({ r, k: Math.pow(rand(), 1 / (r.weight || 1)) }))
@@ -178,8 +247,17 @@ export function dealShelves(recipes, seed, count = 4) {
   let people = 0;
   for (const r of rest) {
     if (picked.length >= count) break;
-    if (r.kind === "person") { if (people >= 1) continue; people++; }
+    const cap = picked.length < 6 ? 2 : 3 + Math.floor((picked.length - 6) / 3);
+    if (r.kind === "person") { if (people >= cap) continue; people++; }
     picked.push(r);
   }
-  return picked.slice(0, count).map((r) => ({ ...r, deal: shuffled(r.films, rand).slice(0, 15) }));
+  return picked.slice(0, count).map((r) => {
+    if (r.kind !== "pairs") return { ...r, deal: shuffled(r.films, rand).slice(0, 15) };
+    const used = new Set();
+    const deal = shuffled(r.films, rand).filter((p) => {
+      if (used.has(p.a.key) || used.has(p.b.key)) return false;
+      used.add(p.a.key); used.add(p.b.key); return true;
+    }).slice(0, 10);
+    return { ...r, deal };
+  });
 }

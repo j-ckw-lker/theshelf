@@ -237,7 +237,9 @@ function usePullToRefresh(onRefresh, enabled) {
 function Home({ films, defs, recipes, filters, home, setHome, onOpen, onSeeAll, onSearch, onFilters, active }) {
   const eligible = useMemo(() => films.filter(filterTest(defs, filters)), [films, defs, filters]);
   const pick = pickFrom(eligible, home.date, home.pick);
-  const shelves = useMemo(() => dealShelves(recipes, hashStr(home.date) + home.seed * 104729), [recipes, home.date, home.seed]);
+  const extra = home.more || 0;
+  const shelves = useMemo(() => dealShelves(recipes, hashStr(home.date) + home.seed * 104729, 6 + extra * 3), [recipes, home.date, home.seed, extra]);
+  const canDealMore = shelves.length === 6 + extra * 3 && recipes.length > shelves.length;
   const labels = activeFilterLabels(defs, filters);
   const filterLabel = labels.length === 0 ? "Filters" : labels.length === 1 ? labels[0] : labels[0] + " +" + (labels.length - 1);
   const [logoFailed, setLogoFailed] = useState(false);
@@ -250,7 +252,7 @@ function Home({ films, defs, recipes, filters, home, setHome, onOpen, onSeeAll, 
     setHome({ ...home, pick: n });
   };
   const refresh = useCallback(() => {
-    setHome((h) => ({ ...h, seed: h.seed + 1, pick: h.pick + 1 }));
+    setHome((h) => ({ ...h, seed: h.seed + 1, pick: h.pick + 1, more: 0 }));
   }, [setHome]);
   const { pull, refreshing, dragging } = usePullToRefresh(refresh, active);
 
@@ -323,20 +325,44 @@ function Home({ films, defs, recipes, filters, home, setHome, onOpen, onSeeAll, 
             <div className="shelf-head">
               <div>
                 <h2>{s.title}</h2>
-                <p>{s.films.length} {s.kind === "person" ? "on your shelf" : "films"}</p>
+                <p>{s.kind === "pairs" ? "Two films, one night" : `${s.films.length} ${s.kind === "person" ? "on your shelf" : "films"}`}</p>
               </div>
-              <button className="link" onClick={() => onSeeAll(s)}>See all</button>
+              {s.kind !== "pairs" && <button className="link" onClick={() => onSeeAll(s)}>See all</button>}
             </div>
-            <div className="shelf-row">
-              {s.deal.map((f) => (
-                <button key={f.key} className="shelf-item" onClick={() => onOpen(f)}>
-                  <Poster path={f.posterPath} title={f.name} size="w185" />
-                  <span>{s.sub(f)}</span>
-                </button>
-              ))}
-            </div>
+            {s.kind === "pairs" ? (
+              <div className="shelf-row">
+                {s.deal.map((p) => (
+                  <div key={p.key} className="pair">
+                    <div className="pair-posters">
+                      {[p.a, p.b].map((f) => (
+                        <button key={f.key} onClick={() => onOpen(f)} aria-label={`${f.name} (${f.year})`}>
+                          <Poster path={f.posterPath} title={f.name} size="w185" />
+                        </button>
+                      ))}
+                    </div>
+                    <span className="pair-why">{p.why}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="shelf-row">
+                {s.deal.map((f) => (
+                  <button key={f.key} className="shelf-item" onClick={() => onOpen(f)}>
+                    <Poster path={f.posterPath} title={f.name} size="w185" />
+                    <span>{s.sub(f)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </section>
         ))}
+        {canDealMore && (
+          <div className="deal-more">
+            <button className="btn btn-outline" onClick={() => setHome((h) => ({ ...h, more: (h.more || 0) + 1 }))}>
+              <Icon d={I.plus} size={16} sw={2.4} />Deal three more
+            </button>
+          </div>
+        )}
       </div>
     </>
   );
