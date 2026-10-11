@@ -86,7 +86,7 @@ export function editionBadges(edition = "") {
   if (/steel/.test(e)) out.push("Steelbook");
   if (/collector/.test(e)) out.push("Collector's");
   if (/criterion/.test(e)) out.push("Criterion");
-  if (/arrow/.test(e)) out.push("Arrow");
+  if (/arrow/.test(e)) out.push("Arrow Video");
   if (/vinegar/.test(e)) out.push("Vinegar Syndrome");
   const copies = e.match(/(\d+)\s+(copies|blu ray steelbooks|steelbooks)/);
   if (copies && +copies[1] > 1) out.push(copies[1] + " copies");
@@ -123,7 +123,7 @@ export const FORMATS = ["4K", "Blu-ray", "DVD", "Other"];
 export const PACKAGES = ["Standard", "Steelbook", "Limited", "Collector's", "Box set"];
 export const REGIONS = ["A", "B", "C", "Free"];
 const LABEL_PATTERNS = [
-  [/criterion/, "Criterion"], [/arrow/, "Arrow"], [/vinegar/, "Vinegar Syndrome"], [/radiance/, "Radiance"],
+  [/criterion/, "Criterion"], [/arrow/, "Arrow Video"], [/vinegar/, "Vinegar Syndrome"], [/radiance/, "Radiance"],
   [/shout|scream factory/, "Shout! Scream Factory"], [/kino/, "Kino Lorber"], [/\ba24\b/, "A24"], [/film vault/, "The Film Vault"],
   [/88 films/, "88 Films"], [/second sight/, "Second Sight"], [/eureka|masters of cinema/, "Eureka"], [/severin/, "Severin"],
   [/umbrella/, "Umbrella"], [/indicator|powerhouse/, "Indicator"], [/imprint/, "Imprint"], [/\bnova\b/, "Nova Media"],
@@ -132,8 +132,8 @@ const LABEL_PATTERNS = [
   [/lionsgate/, "Lionsgate"], [/neon\b/, "Neon"], [/third window/, "Third Window"], [/well go/, "Well Go USA"],
 ];
 export const KNOWN_LABELS = LABEL_PATTERNS.map((l) => l[1]);
-// One name per label, however it was typed. Anything Shout/Scream reads as "Shout! Scream Factory".
-const LABEL_ALIASES = { shout: "Shout! Scream Factory", shoutfactory: "Shout! Scream Factory", screamfactory: "Shout! Scream Factory", shoutscreamfactory: "Shout! Scream Factory" };
+// One name per label, however it was typed: Shout/Scream reads as "Shout! Scream Factory", Arrow as "Arrow Video".
+const LABEL_ALIASES = { shout: "Shout! Scream Factory", shoutfactory: "Shout! Scream Factory", screamfactory: "Shout! Scream Factory", shoutscreamfactory: "Shout! Scream Factory", arrow: "Arrow Video", arrowvideo: "Arrow Video" };
 export const canonicalLabel = (l) => {
   if (!l) return l;
   const t = l.trim();

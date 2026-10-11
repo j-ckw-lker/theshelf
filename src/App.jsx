@@ -718,7 +718,7 @@ function Library({ films, customTags, extra, setExtra, onOpen, onAdd, onSettings
             {list.length === films.length ? `${list.length} films` : `${list.length} of ${films.length}`}
             {(nActive > 0 || extra) && <button className="link" onClick={() => reflow(() => { setSel({}); setExtra(null); })}>Clear</button>}
           </span>
-          {view === "wall" && (
+          {view === "wall" && !(nActive > 0 || extra) && (
             <span className="density" role="group" aria-label="Poster size">
               {[["Large", 3], ["Medium", 4], ["Small", 5]].map(([l, n]) => (
                 <button key={n} className={cols === n ? "on" : ""} aria-pressed={cols === n} onClick={() => changeCols(n)} aria-label={l + " posters"}>
