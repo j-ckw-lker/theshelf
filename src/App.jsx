@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from "react";
 import SEED_COLLECTION from "./collection.json";
 import COLLECTIONS from "./collections.json";
 import META from "./meta.json";
@@ -128,6 +128,7 @@ const I = {
   close: <path d="M7 7l10 10M17 7 7 17" />,
   shuffle: <path d="M3 7h3.5c2.5 0 4 1.3 5.5 5s3 5 5.5 5H21M3 17h3.5c1.6 0 2.8-.6 3.8-1.8M13.7 8.8C14.7 7.6 15.9 7 17.5 7H21m-2.5-2.5L21 7l-2.5 2.5m0 5L21 17l-2.5 2.5" />,
   arrow: <path d="M12 5v14M6 13l6 6 6-6" />,
+  up: <path d="M12 19V5M6 11l6-6 6 6" />,
   doubles: <><rect x="2.75" y="5" width="8.5" height="14" rx="1.5" /><rect x="12.75" y="5" width="8.5" height="14" rx="1.5" /></>,
   gear: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" /></>,
   image: <><rect x="3.5" y="5" width="17" height="14" rx="2" /><circle cx="9" cy="10" r="1.6" /><path d="m4 17 5-4.5 3.5 3 3-2.5 4.5 4" /></>,
@@ -176,12 +177,44 @@ function Sheet({ title, onClose, left, right, tall, children, foot, sub }) {
   );
 }
 
-const useBodyLock = (on) => useEffect(() => {
+// Freeze the page behind overlays. iOS ignores overflow:hidden on body and can lose the scroll
+// position, so pin the body in place at its current offset and put it back exactly on release.
+// Counted, so a sheet over a film page doesn't unlock the page underneath.
+let locks = 0, lockedY = 0;
+// Leaving for somewhere else (another tab) — land at the top instead of the old spot.
+const forgetScroll = () => { lockedY = 0; };
+const useBodyLock = (on) => useLayoutEffect(() => {
   if (!on) return;
-  const prev = document.body.style.overflow;
-  document.body.style.overflow = "hidden";
-  return () => { document.body.style.overflow = prev; };
+  if (locks++ === 0) {
+    lockedY = window.scrollY;
+    const b = document.body.style;
+    b.position = "fixed"; b.top = -lockedY + "px"; b.left = "0"; b.right = "0"; b.overflow = "hidden";
+  }
+  return () => {
+    if (--locks === 0) {
+      const b = document.body.style;
+      b.position = ""; b.top = ""; b.left = ""; b.right = ""; b.overflow = "";
+      window.scrollTo(0, lockedY);
+    }
+  };
 }, [on]);
+
+// Floating "back to top" once you're a couple of screens down.
+function BackToTop() {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    const on = () => setShow(window.scrollY > window.innerHeight * 1.5);
+    on();
+    window.addEventListener("scroll", on, { passive: true });
+    return () => window.removeEventListener("scroll", on);
+  }, []);
+  return (
+    <button className={"to-top" + (show ? " on" : "")} aria-label="Back to top" aria-hidden={!show} tabIndex={show ? 0 : -1}
+      onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
+      <Icon d={I.up} size={15} sw={2.6} />Top
+    </button>
+  );
+}
 
 // ─── HOME ───────────────────────────────────────────────────────────────
 function useHomeState() {
@@ -1850,10 +1883,10 @@ export default function App() {
 
   const openFilm = (f) => setStack((s) => (s[s.length - 1] === f.key ? s : [...s, f.key]));
   const back = () => setStack((s) => s.slice(0, -1));
-  const goTab = (t) => { setStack([]); if (t === tab) window.scrollTo({ top: 0, behavior: "smooth" }); else { setTab(t); window.scrollTo(0, 0); } };
-  const toLibrary = (filter) => { setExtra(filter); setStack([]); setTab("library"); window.scrollTo(0, 0); };
+  const goTab = (t) => { if (t !== tab) forgetScroll(); setStack([]); if (t === tab) window.scrollTo({ top: 0, behavior: "smooth" }); else { setTab(t); window.scrollTo(0, 0); } };
+  const toLibrary = (filter) => { forgetScroll(); setExtra(filter); setStack([]); setTab("library"); window.scrollTo(0, 0); };
   const onPerson = (name) => toLibrary({ label: name, test: (f) => f.directors.includes(name) || f.dop.includes(name) || f.music.includes(name) || f.cast.includes(name) });
-  const buildAround = (f) => { setAnchor(f.key); setDblView("build"); setStack([]); setNight(null); setTab("doubles"); window.scrollTo(0, 0); };
+  const buildAround = (f) => { forgetScroll(); setAnchor(f.key); setDblView("build"); setStack([]); setNight(null); setTab("doubles"); window.scrollTo(0, 0); };
   const logBoth = (a, b, program) => {
     D.logWatch(a.key); D.logWatch(b.key);
     if (program) D.saveProgram({ ...program, watched: todayISO() });
@@ -1871,6 +1904,7 @@ export default function App() {
       </main>
       {tab === "library" && <main><Library films={films} customTags={D.customTags} extra={extra} setExtra={setExtra} onOpen={openFilm} onAdd={() => setAdding({})} onSettings={() => setSettings(true)} searchFocus={searchFocus} onFocused={() => setSearchFocus(0)} /></main>}
       {tab === "stats" && <main><Stats films={films} onPerson={onPerson} onLabel={(l) => toLibrary({ label: l, test: (f) => f.copies.some((c) => c.label === l) })} /></main>}
+      {(tab === "library" || tab === "doubles" || tab === "stats") && !top && <BackToTop key={tab} />}
       {tab === "doubles" && <main><Doubles films={films} ix={ix} programs={D.programs} view={dblView} setView={setDblView} anchor={anchor} setAnchor={setAnchor} onNight={setNight} finish={finish} /></main>}
 
       {top && (
