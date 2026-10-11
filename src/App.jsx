@@ -385,6 +385,16 @@ function Library({ films, extra, setExtra, onOpen, onAdd, searchFocus, onFocused
     else if (d / pinch.current < 0.8) { changeCols(cols + 1); pinch.current = d; }
   };
   const onTouchEnd = (e) => { if (e.touches.length < 2) pinch.current = null; };
+  // The letter rail only appears once the header has scrolled away, so it never sits on the controls.
+  const listTop = useRef(null);
+  const [railOn, setRailOn] = useState(false);
+  useEffect(() => {
+    const el = listTop.current;
+    if (!el || !("IntersectionObserver" in window)) return;
+    const io = new IntersectionObserver(([e]) => setRailOn(!e.isIntersecting && e.boundingClientRect.top < 0));
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
   const inputRef = useRef(null);
   useEffect(() => { if (searchFocus) { inputRef.current?.focus(); onFocused(); } }, [searchFocus]);
 
@@ -466,7 +476,8 @@ function Library({ films, extra, setExtra, onOpen, onAdd, searchFocus, onFocused
         </div>
       </div>
 
-      <div style={{ marginTop: 8 }}>
+      <div ref={listTop} aria-hidden="true" style={{ height: 1, marginTop: 7 }} />
+      <div>
         {list.length === 0 && (
           <div className="empty">
             No films match{query ? ` "${q.trim()}"` : ""}.
@@ -507,7 +518,7 @@ function Library({ films, extra, setExtra, onOpen, onAdd, searchFocus, onFocused
       </div>
 
       {grouped && list.length > 40 && (
-        <nav className="rail" aria-label="Jump to letter">
+        <nav className={"rail" + (railOn ? " on" : "")} aria-label="Jump to letter" aria-hidden={!railOn}>
           {groups.map((g) => <button key={g.letter} onClick={() => jump(g.letter)} aria-label={"Jump to " + g.letter}>{g.letter}</button>)}
         </nav>
       )}
