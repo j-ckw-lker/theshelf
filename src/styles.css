@@ -384,3 +384,24 @@ html[data-vt="tab"]::view-transition-new(root) { animation: vt-in 0.24s ease 0.0
 @keyframes fade-out { to { opacity: 0; } }
 @keyframes sink { to { transform: translateY(100%); } }
 @media (prefers-reduced-motion: reduce) { ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; } }
+
+/* See all: shelf → Library */
+html[data-vt="seeall"]::view-transition-old(root) { animation: vt-out 0.24s ease both; }
+html[data-vt="seeall"]::view-transition-new(root) { animation: vt-in 0.34s ease 0.1s both; }
+::view-transition-group(see-title) { animation-duration: 0.46s; animation-timing-function: cubic-bezier(.2, .9, .3, 1); }
+::view-transition-group(see-0) { animation-duration: 0.56s; animation-delay: 0ms; animation-timing-function: cubic-bezier(.2, .9, .3, 1); }
+::view-transition-old(see-0), ::view-transition-new(see-0) { height: 100%; width: 100%; object-fit: cover; }
+::view-transition-group(see-1) { animation-duration: 0.56s; animation-delay: 28ms; animation-timing-function: cubic-bezier(.2, .9, .3, 1); }
+::view-transition-old(see-1), ::view-transition-new(see-1) { height: 100%; width: 100%; object-fit: cover; }
+::view-transition-group(see-2) { animation-duration: 0.56s; animation-delay: 56ms; animation-timing-function: cubic-bezier(.2, .9, .3, 1); }
+::view-transition-old(see-2), ::view-transition-new(see-2) { height: 100%; width: 100%; object-fit: cover; }
+::view-transition-group(see-3) { animation-duration: 0.56s; animation-delay: 84ms; animation-timing-function: cubic-bezier(.2, .9, .3, 1); }
+::view-transition-old(see-3), ::view-transition-new(see-3) { height: 100%; width: 100%; object-fit: cover; }
+::view-transition-group(see-4) { animation-duration: 0.56s; animation-delay: 112ms; animation-timing-function: cubic-bezier(.2, .9, .3, 1); }
+::view-transition-old(see-4), ::view-transition-new(see-4) { height: 100%; width: 100%; object-fit: cover; }
+::view-transition-group(see-5) { animation-duration: 0.56s; animation-delay: 140ms; animation-timing-function: cubic-bezier(.2, .9, .3, 1); }
+::view-transition-old(see-5), ::view-transition-new(see-5) { height: 100%; width: 100%; object-fit: cover; }
+::view-transition-group(see-6) { animation-duration: 0.56s; animation-delay: 168ms; animation-timing-function: cubic-bezier(.2, .9, .3, 1); }
+::view-transition-old(see-6), ::view-transition-new(see-6) { height: 100%; width: 100%; object-fit: cover; }
+::view-transition-group(see-7) { animation-duration: 0.56s; animation-delay: 196ms; animation-timing-function: cubic-bezier(.2, .9, .3, 1); }
+::view-transition-old(see-7), ::view-transition-new(see-7) { height: 100%; width: 100%; object-fit: cover; }

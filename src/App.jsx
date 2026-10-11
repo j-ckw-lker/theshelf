@@ -460,7 +460,7 @@ function Home({ films, defs, recipes, filters, home, setHome, onOpen, onSeeAll, 
                 <h2>{s.title}</h2>
                 <p>{s.kind === "pairs" ? "Two films, one night" : `${s.films.length} ${s.kind === "person" ? "on your shelf" : "films"}`}</p>
               </div>
-              <button className="link" onClick={() => (s.kind === "pairs" ? onDoubles() : onSeeAll(s))}>See all</button>
+              <button className="link" onClick={(e) => (s.kind === "pairs" ? onDoubles() : onSeeAll(s, e.currentTarget))}>See all</button>
             </div>
             {s.kind === "pairs" ? (
               <div className="shelf-row">
@@ -2010,7 +2010,28 @@ export default function App() {
     forgetScroll();
     transition("tab", () => { setStack([]); setTab(t); window.scrollTo(0, 0); });
   };
-  const toLibrary = (filter) => { forgetScroll(); setExtra(filter); setStack([]); setTab("library"); window.scrollTo(0, 0); };
+  // From a Home shelf's "See all": the shelf's visible posters fly to their spots in the Library
+  // grid and the shelf title becomes the filter chip. Anything that can't be matched just fades.
+  const toLibrary = (filter, from) => {
+    forgetScroll();
+    const update = () => { setExtra(filter); setStack([]); setTab("library"); window.scrollTo(0, 0); };
+    const shelf = from?.closest?.("section.shelf");
+    if (!shelf) return update();
+    const named = [];
+    const name = (el, n) => { el.style.viewTransitionName = n; named.push(el); };
+    const clear = () => named.splice(0).forEach((el) => { el.style.viewTransitionName = ""; });
+    const onScreen = (el) => { const r = el.getBoundingClientRect(); return r.right > 0 && r.left < window.innerWidth && r.bottom > 0 && r.top < window.innerHeight; };
+    const items = [...shelf.querySelectorAll("[data-key]")].filter(onScreen).slice(0, 8);
+    items.forEach((b, i) => name(b.querySelector(".poster"), "see-" + i));
+    const title = shelf.querySelector("h2");
+    if (title) name(title, "see-title");
+    const t = transition("seeall", () => { clear(); update(); }, () => {
+      items.forEach((b, i) => { const el = posterFor(b.dataset.key); if (el) name(el, "see-" + i); });
+      const chip = document.querySelector(".lib-filter .chip.on");
+      if (chip) name(chip, "see-title");
+    });
+    if (t) t.finished.finally(clear); else clear();
+  };
   const onPerson = (name) => toLibrary({ label: name, test: (f) => f.directors.includes(name) || f.dop.includes(name) || f.music.includes(name) || f.cast.includes(name) });
   const buildAround = (f) => { forgetScroll(); setAnchor(f.key); setDblView("build"); setStack([]); setNight(null); setTab("doubles"); window.scrollTo(0, 0); };
   const logBoth = (a, b, program) => {
@@ -2023,7 +2044,7 @@ export default function App() {
     <div className="app">
       <main hidden={tab !== "home"}>
         <Home films={films} defs={defs} recipes={recipes} filters={filters} home={home} setHome={setHome} active={tab === "home" && !top}
-          onOpen={openFilm} onSeeAll={(s) => toLibrary({ label: s.title, test: s.test })}
+          onOpen={openFilm} onSeeAll={(s, el) => toLibrary({ label: s.title, test: s.test }, el)}
           onSearch={() => { toLibrary(null); setSearchFocus((n) => n + 1); }}
           onFilters={(x) => (x === "reset" ? setFilters({}) : setShowFilters(true))}
           onPair={setNight} onDoubles={() => { setDblView("feed"); goTab("doubles"); }} />
