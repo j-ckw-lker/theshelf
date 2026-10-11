@@ -5,10 +5,11 @@ import META from "./meta.json";
 import { SEED_WANTLIST } from "./wantlist.js";
 import {
   store, readJSON, fkey, img, tmdb, shapeTmdbMovie, todayISO, thisYear, fmtDate, runtimeLabel, stars,
-  sortKey, letterOf, peopleLabel, hashStr, rng, yearsSince, parseEdition, copyBadges, copyLine, money,
+  sortKey, letterOf, peopleLabel, hashStr, rng, shuffled, yearsSince, parseEdition, copyBadges, copyLine, money,
   FORMATS, PACKAGES, REGIONS, KNOWN_LABELS, newId,
 } from "./lib.js";
 import { TAGS, makeFilters, filterTest, activeFilterLabels, buildRecipes, dealShelves } from "./shelves.js";
+import { pairIndex, bestPairs, partnersFor, scorePair, nightPlan, reasonLine } from "./pairs.js";
 import "./styles.css";
 
 // ════════════════════════════════════════════════════════════════════════
@@ -35,9 +36,12 @@ function useData() {
   const [want, setWant] = useStored("shelf-want", () => SEED_WANTLIST.map((w) => ({ ...w, bought: false })));
   const [watchLog, setWatchLog] = useStored("shelf-watchlog", {});
   const [customTags, setCustomTags] = useStored("shelf-customtags", []);
+  const [programs, setPrograms] = useStored("shelf-programs", []);
   const retag = (fn) => setUserData((d) => Object.fromEntries(Object.entries(d).map(([k, u]) => [k, u.tags ? { ...u, tags: fn(u.tags) } : u])));
   return {
-    userData, added, want, watchLog, customTags,
+    userData, added, want, watchLog, customTags, programs,
+    saveProgram: (p) => setPrograms((ps) => (ps.some((x) => x.id === p.id) ? ps.map((x) => (x.id === p.id ? { ...x, ...p } : x)) : [{ ...p, created: todayISO() }, ...ps])),
+    removeProgram: (id) => setPrograms((ps) => ps.filter((x) => x.id !== id)),
     addTag: (name) => setCustomTags((t) => (t.includes(name) || TAGS[name] ? t : [...t, name])),
     renameTag: (from, to) => {
       setCustomTags((t) => t.map((x) => (x === from ? to : x)).filter((x, i, a) => a.indexOf(x) === i));
@@ -57,8 +61,9 @@ function useData() {
       if (p.want) setWant(p.want);
       if (p.watchLog) setWatchLog(p.watchLog);
       if (p.customTags) setCustomTags(p.customTags);
+      if (p.programs) setPrograms(p.programs);
     },
-    exportPayload: () => ({ userData, added, want, watchLog, customTags }),
+    exportPayload: () => ({ userData, added, want, watchLog, customTags, programs }),
   };
 }
 
@@ -120,6 +125,9 @@ const I = {
   close: <path d="M7 7l10 10M17 7 7 17" />,
   shuffle: <path d="M3 7h3.5c2.5 0 4 1.3 5.5 5s3 5 5.5 5H21M3 17h3.5c1.6 0 2.8-.6 3.8-1.8M13.7 8.8C14.7 7.6 15.9 7 17.5 7H21m-2.5-2.5L21 7l-2.5 2.5m0 5L21 17l-2.5 2.5" />,
   arrow: <path d="M12 5v14M6 13l6 6 6-6" />,
+  doubles: <><rect x="2.75" y="5" width="8.5" height="14" rx="1.5" /><rect x="12.75" y="5" width="8.5" height="14" rx="1.5" /></>,
+  gear: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" /></>,
+  swap: <path d="M7 4 3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7" />,
   wall: <><rect x="3.5" y="3.5" width="7.5" height="7.5" rx="1" /><rect x="13" y="3.5" width="7.5" height="7.5" rx="1" /><rect x="3.5" y="13" width="7.5" height="7.5" rx="1" /><rect x="13" y="13" width="7.5" height="7.5" rx="1" /></>,
   sliders: <><path d="M4 7h9M17 7h3M4 17h3M11 17h9" /><circle cx="15" cy="7" r="2" /><circle cx="9" cy="17" r="2" /></>,
   list: <><path d="M9 6h11M9 12h11M9 18h11" /><circle cx="4.5" cy="6" r="1" fill="currentColor" /><circle cx="4.5" cy="12" r="1" fill="currentColor" /><circle cx="4.5" cy="18" r="1" fill="currentColor" /></>,
@@ -234,7 +242,7 @@ function usePullToRefresh(onRefresh, enabled) {
   return { pull, refreshing, dragging: pull > 0 && !refreshing };
 }
 
-function Home({ films, defs, recipes, filters, home, setHome, onOpen, onSeeAll, onSearch, onFilters, active }) {
+function Home({ films, defs, recipes, filters, home, setHome, onOpen, onSeeAll, onSearch, onFilters, onPair, onDoubles, active }) {
   const eligible = useMemo(() => films.filter(filterTest(defs, filters)), [films, defs, filters]);
   const pick = pickFrom(eligible, home.date, home.pick);
   const extra = home.more || 0;
@@ -327,21 +335,17 @@ function Home({ films, defs, recipes, filters, home, setHome, onOpen, onSeeAll, 
                 <h2>{s.title}</h2>
                 <p>{s.kind === "pairs" ? "Two films, one night" : `${s.films.length} ${s.kind === "person" ? "on your shelf" : "films"}`}</p>
               </div>
-              {s.kind !== "pairs" && <button className="link" onClick={() => onSeeAll(s)}>See all</button>}
+              <button className="link" onClick={() => (s.kind === "pairs" ? onDoubles() : onSeeAll(s))}>See all</button>
             </div>
             {s.kind === "pairs" ? (
               <div className="shelf-row">
                 {s.deal.map((p) => (
-                  <div key={p.key} className="pair">
+                  <button key={p.key} className="pair" onClick={() => onPair(p)} aria-label={`${p.a.name} and ${p.b.name}`}>
                     <div className="pair-posters">
-                      {[p.a, p.b].map((f) => (
-                        <button key={f.key} onClick={() => onOpen(f)} aria-label={`${f.name} (${f.year})`}>
-                          <Poster path={f.posterPath} title={f.name} size="w185" />
-                        </button>
-                      ))}
+                      {[p.a, p.b].map((f) => <Poster key={f.key} path={f.posterPath} title={f.name} size="w185" />)}
                     </div>
-                    <span className="pair-why">{p.why}</span>
-                  </div>
+                    <span className="pair-why">{reasonLine(p, 1)}</span>
+                  </button>
                 ))}
               </div>
             ) : (
@@ -469,7 +473,7 @@ const SORTS = {
   long: ["Longest runtime", (a, b) => (b.runtime || 0) - (a.runtime || 0)],
 };
 
-function Library({ films, customTags, extra, setExtra, onOpen, onAdd, searchFocus, onFocused }) {
+function Library({ films, customTags, extra, setExtra, onOpen, onAdd, onSettings, searchFocus, onFocused }) {
   const groups = useMemo(() => libGroups(films, customTags), [films, customTags]);
   const [sel, setSel] = useState({});
   const active = useMemo(() => activeOpts(groups, sel), [groups, sel]);
@@ -546,6 +550,7 @@ function Library({ films, customTags, extra, setExtra, onOpen, onAdd, searchFocu
               <Icon d={view === "wall" ? I.list : I.wall} size={22} sw={1.9} />
             </button>
             <button className="icon-btn" onClick={onAdd} aria-label="Add a film"><Icon d={I.plus} size={24} sw={2.2} /></button>
+            <button className="icon-btn" onClick={onSettings} aria-label="Backup, tags and want list"><Icon d={I.gear} size={21} sw={1.9} /></button>
           </div>
         </div>
         <label className="search">
@@ -709,7 +714,7 @@ function LibraryFilter({ films, groups, sel, active, onToggle, onReset, onClose 
 }
 
 // ─── FILM PAGE ──────────────────────────────────────────────────────────
-function FilmPage({ film, films, allTags, backLabel, onBack, onOpen, onPerson, onUpdate, onLog, onUnlog, onRemove, onPicker, onAddTag, onRemoveTag, onEditCopy, onEditDetails }) {
+function FilmPage({ film, films, ix, onNight, onBuildAround, allTags, backLabel, onBack, onOpen, onPerson, onUpdate, onLog, onUnlog, onRemove, onPicker, onAddTag, onRemoveTag, onEditCopy, onEditDetails }) {
   const [note, setNote] = useState(film.note);
   const [newTag, setNewTag] = useState(null);
   const [editTags, setEditTags] = useState(false);
@@ -772,6 +777,7 @@ function FilmPage({ film, films, allTags, backLabel, onBack, onOpen, onPerson, o
 
   const today = todayISO();
   const loggedToday = film.lastWatched === today;
+  const pairsWith = useMemo(() => (ix ? partnersFor(ix, film, 3) : []), [ix, film]);
   const more = film.directors.length ? films.filter((f) => f.key !== film.key && f.directors.includes(film.directors[0])) : [];
   const owned = useMemo(() => new Set(films.map((f) => f.tmdb)), [films]);
   const coll = film.collection && COLLECTIONS[film.collection];
@@ -888,6 +894,27 @@ function FilmPage({ film, films, allTags, backLabel, onBack, onOpen, onPerson, o
             <textarea id="notes" className="notes" value={note} onChange={(e) => setNote(e.target.value)} onBlur={() => note !== film.note && onUpdate(film.key, { note })}
               placeholder="Edition details, upgrade plans, who borrowed it" />
           </div>
+
+          {pairsWith.length > 0 && (
+            <section>
+              <div className="stat-head" style={{ marginBottom: 4 }}>
+                <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>Double it up</h2>
+                <button className="link" style={{ fontSize: 14 }} onClick={() => onBuildAround(film)}>All partners</button>
+              </div>
+              {pairsWith.map((p) => {
+                const other = p.a.key === film.key ? p.b : p.a;
+                return (
+                  <button key={p.key} className="film-row" style={{ padding: "6px 0" }} onClick={() => onNight(p)}>
+                    <Poster path={other.posterPath} title={other.name} size="w92" className="thumb" />
+                    <span className="body">
+                      <span className="title">{other.name} <span className="muted tnum" style={{ fontSize: 14 }}>{other.year}</span></span>
+                      <span className="meta"><span className="who">{reasonLine(p, 2)}</span></span>
+                    </span>
+                  </button>
+                );
+              })}
+            </section>
+          )}
 
           {more.length > 0 && (
             <section>
@@ -1386,8 +1413,232 @@ function Stats({ films, onPerson, onLabel }) {
   );
 }
 
+// ─── DOUBLES ────────────────────────────────────────────────────────────
+const FINISH = [[22, "10 PM"], [23, "11 PM"], [24, "Midnight"], [25, "1 AM"]];
+const runtimeShort = (m) => `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`;
+
+function PairCard({ p, finish, onOpen }) {
+  const plan = nightPlan(p.a, p.b, finish);
+  return (
+    <button className="dbl-card" onClick={() => onOpen(p)}>
+      <div className="dbl-posters">
+        {[p.a, p.b].map((f) => <Poster key={f.key} path={f.posterPath} title={f.name} size="w185" />)}
+      </div>
+      <div className="dbl-body">
+        <div className="dbl-titles">
+          <span>{p.a.name} <span className="muted tnum">{p.a.year}</span></span>
+          <span>{p.b.name} <span className="muted tnum">{p.b.year}</span></span>
+        </div>
+        <div className="dbl-why">
+          {p.reasons.slice(0, 3).map((r) => <span key={r.text} className={"why why-" + r.kind}>{r.text}</span>)}
+        </div>
+        {plan && <div className="dbl-plan tnum">{runtimeShort(plan.total)} · start by {plan.start}</div>}
+      </div>
+    </button>
+  );
+}
+
+function Doubles({ films, ix, programs, view, setView, anchor, setAnchor, onNight, finish }) {
+  const best = useMemo(() => bestPairs(ix), [ix]);
+  const [seed, setSeed] = useState(0);
+  const [shown, setShown] = useState(10);
+  const feed = useMemo(() => shuffled(best, rng(hashStr(todayISO()) + seed * 7919)), [best, seed]);
+  const [q, setQ] = useState("");
+  const anchorFilm = anchor ? films.find((f) => f.key === anchor) : null;
+  const partners = useMemo(() => (anchorFilm ? partnersFor(ix, anchorFilm, 40) : []), [ix, anchorFilm]);
+  const query = q.trim().toLowerCase();
+  const matches = query ? films.filter((f) => f.name.toLowerCase().includes(query) || f.directors.some((d) => d.toLowerCase().includes(query))).slice(0, 30) : [];
+  const recent = useMemo(() => films.filter((f) => f.lastWatched).sort((a, b) => b.lastWatched.localeCompare(a.lastWatched)).slice(0, 8), [films]);
+  const byKey = useMemo(() => new Map(films.map((f) => [f.key, f])), [films]);
+  const saved = programs.map((pr) => ({ pr, a: byKey.get(pr.a), b: byKey.get(pr.b) })).filter((x) => x.a && x.b);
+  const pick = (f) => { setAnchor(f.key); setQ(""); window.scrollTo(0, 0); };
+
+  return (
+    <div className="page">
+      <div className="page-head"><h1>Double features</h1></div>
+      <div className="seg" role="tablist" aria-label="Double features">
+        {[["feed", "For you"], ["build", "Build"], ["saved", "Saved" + (saved.length ? " " + saved.length : "")]].map(([k, l]) => (
+          <button key={k} role="tab" aria-selected={view === k} className={view === k ? "on" : ""} onClick={() => setView(k)}>{l}</button>
+        ))}
+      </div>
+
+      {view === "feed" && (
+        <>
+          <div className="lib-bar">
+            <span className="muted">Pairs from your shelf, matched on themes, crew, cast and era.</span>
+            <button className="filter-btn" style={{ fontSize: 14, flexShrink: 0 }} onClick={() => { setSeed(seed + 1); setShown(10); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
+              <Icon d={I.shuffle} size={15} sw={2.2} />Shuffle
+            </button>
+          </div>
+          {feed.length === 0 && <div className="empty">Not enough overlap on the shelf to pair anything yet.</div>}
+          <div className="dbl-list">
+            {feed.slice(0, shown).map((p) => <PairCard key={p.key} p={p} finish={finish} onOpen={onNight} />)}
+          </div>
+          {shown < feed.length && <button className="btn btn-outline" onClick={() => setShown(shown + 10)}>Show more pairs</button>}
+        </>
+      )}
+
+      {view === "build" && (
+        <>
+          {anchorFilm ? (
+            <div className="anchor">
+              <Poster path={anchorFilm.posterPath} title={anchorFilm.name} size="w185" />
+              <div className="grow">
+                <span className="muted" style={{ fontSize: 13 }}>Starting with</span>
+                <strong>{anchorFilm.name}</strong>
+                <span className="muted tnum" style={{ fontSize: 14 }}>{[anchorFilm.year, anchorFilm.directors[0], runtimeLabel(anchorFilm.runtime)].filter(Boolean).join(" · ")}</span>
+              </div>
+              <button className="link" onClick={() => setAnchor(null)}>Change</button>
+            </div>
+          ) : (
+            <label className="search">
+              <Icon d={I.search} size={16} sw={2.2} />
+              <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Pick a film to build around" aria-label="Pick a film to build around" />
+            </label>
+          )}
+
+          {!anchorFilm && !query && (
+            <div className="stat-section" style={{ gap: 0 }}>
+              <div className="section-label">Recently watched</div>
+              {recent.map((f) => (
+                <button key={f.key} className="film-row" style={{ padding: "6px 0" }} onClick={() => pick(f)}>
+                  <Poster path={f.posterPath} title={f.name} size="w92" className="thumb" />
+                  <span className="body"><span className="title">{f.name}</span><span className="meta tnum"><span>{f.year}</span><span className="who">{f.directors[0]}</span></span></span>
+                </button>
+              ))}
+            </div>
+          )}
+          {!anchorFilm && query && (
+            <div>
+              {matches.length === 0 && <div className="empty">Nothing on the shelf matches "{q.trim()}".</div>}
+              {matches.map((f) => (
+                <button key={f.key} className="film-row" style={{ padding: "6px 0" }} onClick={() => pick(f)}>
+                  <Poster path={f.posterPath} title={f.name} size="w92" className="thumb" />
+                  <span className="body"><span className="title">{f.name}</span><span className="meta tnum"><span>{f.year}</span><span className="who">{f.directors[0]}</span></span></span>
+                </button>
+              ))}
+            </div>
+          )}
+          {anchorFilm && (
+            <div>
+              <div className="section-label">Best partners on your shelf</div>
+              {partners.length === 0 && <div className="empty">Nothing on the shelf shares enough with this one. Try another film.</div>}
+              {partners.map((p) => {
+                const other = p.a.key === anchorFilm.key ? p.b : p.a;
+                return (
+                  <button key={p.key} className="film-row partner" style={{ padding: "6px 0" }} onClick={() => onNight(p)}>
+                    <Poster path={other.posterPath} title={other.name} size="w92" className="thumb" />
+                    <span className="body">
+                      <span className="title">{other.name} <span className="muted tnum" style={{ fontSize: 14 }}>{other.year}</span></span>
+                      <span className="meta"><span className="who">{reasonLine(p, 2)}</span></span>
+                    </span>
+                    <span className="match tnum" aria-label={"Match strength " + Math.round(p.score)}>{Math.round(p.score)}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+
+      {view === "saved" && (
+        <div>
+          {saved.length === 0 && (
+            <div className="empty">
+              No saved double features yet. Open any pair and tap Save, or build your own around a film.
+              <div style={{ marginTop: 12 }}><button className="link" onClick={() => setView("build")}>Build one</button></div>
+            </div>
+          )}
+          {saved.map(({ pr, a, b }) => (
+            <button key={pr.id} className="saved-row" onClick={() => onNight({ ...(scorePair(ix, a, b) || { a, b, reasons: [], key: a.key + "+" + b.key }), a, b, program: pr })}>
+              <span className="saved-posters">
+                <Poster path={a.posterPath} title={a.name} size="w92" />
+                <Poster path={b.posterPath} title={b.name} size="w92" />
+              </span>
+              <span className="body">
+                <span className="title">{pr.title || a.name + " + " + b.name}</span>
+                <span className="meta">{a.name} then {b.name}</span>
+                {pr.note && <span className="meta note">{pr.note}</span>}
+                {pr.watched && <span className="meta accent">Watched {fmtDate(pr.watched)}</span>}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// One night: the pair, why it works, the math, and saving it as your own program.
+function NightSheet({ pair, programs, finish, setFinish, onSave, onDelete, onLog, onOpenFilm, onClose }) {
+  const existing = pair.program || programs.find((p) => (p.a === pair.a.key && p.b === pair.b.key) || (p.a === pair.b.key && p.b === pair.a.key));
+  const [order, setOrder] = useState(() => (existing && existing.a === pair.b.key ? [pair.b, pair.a] : [pair.a, pair.b]));
+  const [title, setTitle] = useState(existing?.title || "");
+  const [note, setNote] = useState(existing?.note || "");
+  const [logged, setLogged] = useState(false);
+  const [first, second] = order;
+  const plan = nightPlan(first, second, finish);
+  const save = () => onSave({ id: existing?.id || newId(), a: first.key, b: second.key, title: title.trim(), note: note.trim() });
+  return (
+    <Sheet title="Double feature" onClose={onClose} tall
+      foot={(
+        <div className="btn-row">
+          <button className="btn btn-outline" onClick={() => { onLog(first, second, existing && { ...existing, a: first.key, b: second.key, title: title.trim(), note: note.trim() }); setLogged(true); }} disabled={logged}>
+            {logged ? "Logged both" : "Watched both"}
+          </button>
+          <button className="btn btn-primary" onClick={() => { save(); onClose(); }}>{existing ? "Save changes" : "Save"}</button>
+        </div>
+      )}>
+      <div className="night-posters">
+        {order.map((f, i) => (
+          <button key={f.key} className="night-film" onClick={() => onOpenFilm(f)}>
+            <span className="night-n">{i + 1}</span>
+            <Poster path={f.posterPath} title={f.name} size="w342" />
+            <span className="title">{f.name}</span>
+            <span className="muted tnum">{[f.year, runtimeLabel(f.runtime)].filter(Boolean).join(" · ")}</span>
+          </button>
+        ))}
+        <button className="night-swap" onClick={() => setOrder([second, first])} aria-label="Swap the running order"><Icon d={I.swap} size={18} sw={2.2} /></button>
+      </div>
+
+      {pair.reasons?.length > 0 && (
+        <section className="stat-section" style={{ gap: 0 }}>
+          <div className="section-label">Why they pair</div>
+          {pair.reasons.map((r) => (
+            <div key={r.text} className="list-row"><span className={"why-dot why-" + r.kind} aria-hidden="true" /><span className="grow">{r.text.replace(/^\w/, (c) => c.toUpperCase())}</span></div>
+          ))}
+        </section>
+      )}
+
+      {plan && (
+        <section className="stat-section" style={{ gap: 0 }}>
+          <div className="section-label">The night</div>
+          <div className="list-row"><span className="grow muted">Running time, with a 15-minute break</span><span className="tnum">{runtimeShort(plan.total)}</span></div>
+          <div className="list-row">
+            <span className="grow muted">Finish by</span>
+            <label className="sort">
+              {FINISH.find((x) => x[0] === finish)?.[1]}<Icon d={I.down} size={12} sw={2.6} />
+              <select value={finish} onChange={(e) => setFinish(+e.target.value)} aria-label="Finish by">
+                {FINISH.map(([h, l]) => <option key={h} value={h}>{l}</option>)}
+              </select>
+            </label>
+          </div>
+          <div className="list-row"><span className="grow">Start by</span><span className="tnum accent" style={{ fontWeight: 600 }}>{plan.start}</span></div>
+        </section>
+      )}
+
+      <section className="stat-section">
+        <div className="section-label" style={{ marginBottom: 0 }}>Make it yours</div>
+        <input className="field" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Name the night, e.g. Paranoia night" aria-label="Program name" maxLength={48} />
+        <textarea className="notes" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Why these two, snacks, who's coming" aria-label="Program note" />
+        {existing && <button className="danger" style={{ alignSelf: "flex-start", fontSize: 15 }} onClick={() => { onDelete(existing.id); onClose(); }}>Delete this double feature</button>}
+      </section>
+    </Sheet>
+  );
+}
+
 // ─── BACKUP ─────────────────────────────────────────────────────────────
-function Backup({ D, films, onBuy }) {
+function Backup({ D, films, onBuy, bare }) {
   const [renaming, setRenaming] = useState(null);
   const fileRef = useRef(null);
   const [msg, setMsg] = useState("");
@@ -1422,15 +1673,16 @@ function Backup({ D, films, onBuy }) {
   const row = (label, n) => <div className="list-row"><span className="grow muted">{label}</span><span className="tnum">{n}</span></div>;
 
   return (
-    <div className="page" style={{ gap: 28 }}>
-      <div className="page-head"><h1>Backup</h1></div>
-      <section className="stat-section" style={{ gap: 0, marginTop: -14 }}>
+    <div className={bare ? "" : "page"} style={{ display: "flex", flexDirection: "column", gap: 28 }}>
+      {!bare && <div className="page-head"><h1>Backup</h1></div>}
+      <section className="stat-section" style={{ gap: 0, marginTop: bare ? 0 : -14 }}>
         {row("Films", films.length)}
         {row("Added here", films.filter((f) => f.userAdded).length)}
         {row("Tagged", Object.values(D.userData).filter((u) => u.tags && u.tags.length).length)}
         {row("Custom posters", Object.values(D.userData).filter((u) => u.poster).length)}
         {row("Films with copy details", Object.values(D.userData).filter((u) => u.copies && u.copies.length).length)}
         {row("Watches logged here", Object.keys(D.watchLog).length)}
+        {row("Double features saved", D.programs.length)}
       </section>
 
       <section className="stat-section">
@@ -1439,7 +1691,7 @@ function Backup({ D, films, onBuy }) {
           <button className="btn btn-outline" style={{ height: 46 }} onClick={() => fileRef.current.click()}>Restore from backup</button>
         </div>
         <input ref={fileRef} type="file" accept="application/json,.json" onChange={doImport} style={{ display: "none" }} />
-        <span className="muted" style={{ fontSize: 13, lineHeight: 1.45 }}>{msg || "Tags, notes, poster choices, films added here, the want list and watch log live only on this device. Export now and then, and always before clearing Safari."}</span>
+        <span className="muted" style={{ fontSize: 13, lineHeight: 1.45 }}>{msg || "Tags, notes, poster choices, double features, films added here, the want list and watch log live only on this device. Export now and then, and always before clearing Safari."}</span>
       </section>
 
       <section className="stat-section" style={{ gap: 0 }}>
@@ -1511,7 +1763,7 @@ function Backup({ D, films, onBuy }) {
 }
 
 // ─── ROOT ───────────────────────────────────────────────────────────────
-const TABS = [["home", "Home", I.home], ["library", "Library", I.library], ["stats", "Stats", I.stats], ["backup", "Backup", I.backup]];
+const TABS = [["home", "Home", I.home], ["library", "Library", I.library], ["doubles", "Doubles", I.doubles], ["stats", "Stats", I.stats]];
 const TAB_NAMES = Object.fromEntries(TABS.map(([k, l]) => [k, l]));
 
 export default function App() {
@@ -1532,7 +1784,14 @@ export default function App() {
   }, [D.added, D.userData, D.watchLog]);
   useMemo(() => { [...films].sort((a, b) => b.recency - a.recency).forEach((f, i) => { f.recentRank = i + 1; }); }, [films]);
   const byKey = useMemo(() => new Map(films.map((f) => [f.key, f])), [films]);
-  const recipes = useMemo(() => buildRecipes(films, D.customTags), [films, D.customTags]);
+  const ix = useMemo(() => pairIndex(films), [films]);
+  const homePairs = useMemo(() => bestPairs(ix, 60), [ix]);
+  const recipes = useMemo(() => buildRecipes(films, D.customTags, homePairs), [films, D.customTags, homePairs]);
+  const [dblView, setDblView] = useState("feed");
+  const [anchor, setAnchor] = useState(null);
+  const [night, setNight] = useState(null);
+  const [settings, setSettings] = useState(false);
+  const [finish, setFinish] = useStored("shelf-finishby", 23);
   const defs = useMemo(() => makeFilters(D.customTags), [D.customTags]);
   const allTags = useMemo(() => [...Object.entries(TAGS), ...D.customTags.map((t) => [t, t])], [D.customTags]);
   const labels = useMemo(() => [...new Set([...KNOWN_LABELS, ...films.flatMap((f) => f.copies.map((c) => c.label).filter(Boolean))])].sort(), [films]);
@@ -1555,13 +1814,18 @@ export default function App() {
   }, [D.added]);
 
   const top = stack.length ? byKey.get(stack[stack.length - 1]) : null;
-  useBodyLock(!!top || !!adding || !!picking || showFilters || !!copyEdit || !!detailsFor);
+  useBodyLock(!!top || !!adding || !!picking || showFilters || !!copyEdit || !!detailsFor || !!night || settings);
 
   const openFilm = (f) => setStack((s) => (s[s.length - 1] === f.key ? s : [...s, f.key]));
   const back = () => setStack((s) => s.slice(0, -1));
   const goTab = (t) => { setStack([]); if (t === tab) window.scrollTo({ top: 0, behavior: "smooth" }); else { setTab(t); window.scrollTo(0, 0); } };
   const toLibrary = (filter) => { setExtra(filter); setStack([]); setTab("library"); window.scrollTo(0, 0); };
   const onPerson = (name) => toLibrary({ label: name, test: (f) => f.directors.includes(name) || f.dop.includes(name) || f.music.includes(name) || f.cast.includes(name) });
+  const buildAround = (f) => { setAnchor(f.key); setDblView("build"); setStack([]); setNight(null); setTab("doubles"); window.scrollTo(0, 0); };
+  const logBoth = (a, b, program) => {
+    D.logWatch(a.key); D.logWatch(b.key);
+    if (program) D.saveProgram({ ...program, watched: todayISO() });
+  };
   const backLabel = stack.length > 1 ? (byKey.get(stack[stack.length - 2])?.name || "Back") : TAB_NAMES[tab];
 
   return (
@@ -1570,14 +1834,15 @@ export default function App() {
         <Home films={films} defs={defs} recipes={recipes} filters={filters} home={home} setHome={setHome} active={tab === "home" && !top}
           onOpen={openFilm} onSeeAll={(s) => toLibrary({ label: s.title, test: s.test })}
           onSearch={() => { toLibrary(null); setSearchFocus((n) => n + 1); }}
-          onFilters={(x) => (x === "reset" ? setFilters({}) : setShowFilters(true))} />
+          onFilters={(x) => (x === "reset" ? setFilters({}) : setShowFilters(true))}
+          onPair={setNight} onDoubles={() => { setDblView("feed"); goTab("doubles"); }} />
       </main>
-      {tab === "library" && <main><Library films={films} customTags={D.customTags} extra={extra} setExtra={setExtra} onOpen={openFilm} onAdd={() => setAdding({})} searchFocus={searchFocus} onFocused={() => setSearchFocus(0)} /></main>}
+      {tab === "library" && <main><Library films={films} customTags={D.customTags} extra={extra} setExtra={setExtra} onOpen={openFilm} onAdd={() => setAdding({})} onSettings={() => setSettings(true)} searchFocus={searchFocus} onFocused={() => setSearchFocus(0)} /></main>}
       {tab === "stats" && <main><Stats films={films} onPerson={onPerson} onLabel={(l) => toLibrary({ label: l, test: (f) => f.copies.some((c) => c.label === l) })} /></main>}
-      {tab === "backup" && <main><Backup D={D} films={films} onBuy={(w) => setAdding({ name: w.film, year: w.year, label: w.label })} /></main>}
+      {tab === "doubles" && <main><Doubles films={films} ix={ix} programs={D.programs} view={dblView} setView={setDblView} anchor={anchor} setAnchor={setAnchor} onNight={setNight} finish={finish} /></main>}
 
       {top && (
-        <FilmPage key="film" film={top} films={films} allTags={allTags} onAddTag={D.addTag} onRemoveTag={D.removeTag}
+        <FilmPage key="film" film={top} films={films} ix={ix} onNight={setNight} onBuildAround={buildAround} allTags={allTags} onAddTag={D.addTag} onRemoveTag={D.removeTag}
           onEditCopy={(c) => setCopyEdit({ key: top.key, copy: c })} onEditDetails={() => setDetailsFor(top.key)} backLabel={backLabel} onBack={back} onOpen={openFilm} onPerson={onPerson}
           onUpdate={D.updateFilm} onLog={D.logWatch} onUnlog={D.unlogWatch} onRemove={D.removeFilm} onPicker={() => setPicking(top.key)} />
       )}
@@ -1592,6 +1857,16 @@ export default function App() {
         </div>
       </nav>
 
+      {night && (
+        <NightSheet key={night.key} pair={night} programs={D.programs} finish={finish} setFinish={setFinish}
+          onSave={D.saveProgram} onDelete={D.removeProgram} onLog={logBoth}
+          onOpenFilm={(f) => { setNight(null); openFilm(f); }} onClose={() => setNight(null)} />
+      )}
+      {settings && (
+        <Sheet title="Backup & lists" onClose={() => setSettings(false)} tall>
+          <Backup bare D={D} films={films} onBuy={(w) => { setSettings(false); setAdding({ name: w.film, year: w.year, label: w.label }); }} />
+        </Sheet>
+      )}
       {copyEdit && byKey.get(copyEdit.key) && (
         <CopySheet film={byKey.get(copyEdit.key)} copy={copyEdit.copy} labels={labels} onClose={() => setCopyEdit(null)}
           onSave={(copies) => { D.updateFilm(copyEdit.key, { copies }); setCopyEdit(null); }} />

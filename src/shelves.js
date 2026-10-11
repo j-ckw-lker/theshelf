@@ -117,7 +117,7 @@ const VIBES = [
   ["five", "Five stars, no notes", (f) => f.rating === 5],
 ];
 
-export function buildRecipes(films, customTags = []) {
+export function buildRecipes(films, customTags = [], pairs = []) {
   const out = [];
   const add = (r) => {
     const list = films.filter((f) => !f.tags.includes("sell") && r.test(f));
@@ -189,8 +189,7 @@ export function buildRecipes(films, customTags = []) {
     test: (f) => f.directors.some((d) => fiveDirs.has(d)) && (!f.lastWatched || yearsSince(f.lastWatched) > 2),
     sub: (f) => f.directors[0],
   });
-  // Double features: two films (different directors, different series) sharing at least two specific keywords.
-  const pairs = doubleFeatures(films.filter((f) => !f.tags.includes("sell")));
+  // Double features come from pairs.js (scored on themes, crew, cast, era), passed in by the app.
   if (pairs.length >= 6) {
     const inPair = new Set(pairs.flatMap((p) => [p.a.key, p.b.key]));
     out.push({ id: "pairs", kind: "pairs", title: "Double features", weight: 3, films: pairs, test: (f) => inPair.has(f.key), count: pairs.length });
@@ -204,37 +203,6 @@ export function buildRecipes(films, customTags = []) {
   return out;
 }
 
-const BORING_KW = new Set(["duringcreditsstinger", "aftercreditsstinger", "superhero", "based on comic", "sequel", "remake",
-  "based on novel or book", "based on true story", "biography", "woman director", "murder", "new york city", "los angeles, california",
-  "based on video game", "based on young adult novel", "anime", "live action remake", "duringcreditsstinger"]);
-function doubleFeatures(films) {
-  const idx = new Map();
-  films.forEach((f, i) => f.keywords.forEach((k) => { if (!BORING_KW.has(k)) (idx.get(k) || idx.set(k, []).get(k)).push(i); }));
-  const shared = new Map();
-  idx.forEach((list, k) => {
-    if (list.length < 2 || list.length > 25) return;
-    for (let x = 0; x < list.length; x++) for (let y = x + 1; y < list.length; y++) {
-      const key = list[x] * 10000 + list[y];
-      (shared.get(key) || shared.set(key, []).get(key)).push(k);
-    }
-  });
-  const out = [];
-  shared.forEach((ks, key) => {
-    if (ks.length < 2) return;
-    const a = films[Math.floor(key / 10000)], b = films[key % 10000];
-    if (a.directors[0] && a.directors[0] === b.directors[0]) return;
-    if (a.collection && a.collection === b.collection) return;
-    const words = (f) => new Set(f.name.toLowerCase().match(/[a-z0-9]{4,}/g) || []);
-    const wa = words(a);
-    if ([...words(b)].some((w) => wa.has(w))) return; // Batman + The Batman isn't a double feature, it's homework
-    const gap = Math.abs(a.yearNum - b.yearNum);
-    out.push({ key: a.key + "+" + b.key, a: a.yearNum <= b.yearNum ? a : b, b: a.yearNum <= b.yearNum ? b : a, why: ks.slice(0, 2).join(" · ").replace(/^\w/, (c) => c.toUpperCase()), score: ks.length + (gap >= 20 ? 1 : 0) });
-  });
-  return out.sort((x, y) => y.score - x.score).slice(0, 60);
-}
-
-// Deal four shelves: a weighted shuffle (seasonal and your own tags/labels come up more often,
-// but nothing is pinned), at most one "person" shelf, films shuffled within each.
 // Deal the first `count` shelves of today's order. Decisions only look backwards, so asking for more
 // later appends without disturbing what's already on screen. People shelves: 2 in the first six, +1 per three after.
 export function dealShelves(recipes, seed, count = 6) {

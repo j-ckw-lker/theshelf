@@ -282,3 +282,51 @@ img { display: block; }
 .pair-why { font-size: 12px; color: var(--label-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .deal-more { padding: 28px 20px 8px; display: flex; justify-content: center; }
 .deal-more .btn { min-width: 200px; }
+
+/* Doubles tab */
+.seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; padding: 2px; border-radius: 9px; background: var(--fill); }
+.seg button { height: 30px; border-radius: 7px; font-size: 14px; font-weight: 500; color: var(--label); }
+.seg button.on { background: var(--fill-strong); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3); }
+.dbl-list { display: flex; flex-direction: column; gap: 10px; margin-top: 2px; }
+.dbl-card { display: flex; gap: 14px; align-items: center; text-align: left; border-radius: 12px; padding: 12px; background: var(--bg-2); border: 0.5px solid var(--rule-soft); }
+.dbl-card:active { opacity: 0.85; }
+.dbl-posters { display: flex; flex-shrink: 0; padding: 2px 6px 4px 0; }
+.dbl-posters .poster { width: 64px; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.55); }
+.dbl-posters .poster + .poster { margin-left: -18px; transform: rotate(5deg) translateY(4px); }
+.dbl-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 7px; }
+.dbl-titles { display: flex; flex-direction: column; gap: 1px; font-size: 15px; font-weight: 600; line-height: 1.3; }
+.dbl-titles > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dbl-titles .muted { font-weight: 400; font-size: 13px; }
+.dbl-why { display: flex; flex-wrap: wrap; gap: 6px; }
+.why { font-size: 12px; padding: 2px 7px; border-radius: 6px; background: rgba(255, 255, 255, 0.07); color: var(--label-2); }
+.why::first-letter { text-transform: uppercase; }
+.why-craft { color: var(--accent); background: rgba(240, 167, 66, 0.12); }
+.why-people { color: #8fc7ff; background: rgba(143, 199, 255, 0.12); }
+.why-dot { width: 8px; height: 8px; border-radius: 4px; flex-shrink: 0; background: var(--label-3); }
+.why-dot.why-craft { background: var(--accent); }
+.why-dot.why-people { background: #8fc7ff; }
+.dbl-plan { font-size: 12px; color: var(--label-3); }
+.anchor { display: flex; align-items: center; gap: 14px; padding: 10px; border-radius: 12px; background: var(--bg-2); border: 0.5px solid var(--rule-soft); }
+.anchor .poster { width: 56px; }
+.anchor .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.anchor strong { font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.partner { padding-right: 0 !important; }
+.partner .match { flex-shrink: 0; min-width: 30px; height: 24px; border-radius: 12px; display: grid; place-items: center; font-size: 13px; font-weight: 600; color: var(--accent); background: rgba(240, 167, 66, 0.12); align-self: center; }
+.saved-row { width: 100%; display: flex; gap: 14px; align-items: center; padding: 10px 0; border-bottom: 0.5px solid var(--rule-soft); text-align: left; }
+.saved-posters { display: flex; flex-shrink: 0; }
+.saved-posters .poster { width: 44px; border-radius: 3px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5); }
+.saved-posters .poster + .poster { margin-left: -14px; transform: rotate(4deg) translateY(2px); }
+.saved-posters .poster-empty { font-size: 0; }
+.saved-row .body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.saved-row .title { font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.saved-row .meta { font-size: 13px; color: var(--label-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.saved-row .meta.accent { color: var(--accent); }
+
+/* One night */
+.night-posters { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.night-film { display: flex; flex-direction: column; gap: 4px; text-align: left; position: relative; }
+.night-film .title { font-size: 15px; font-weight: 600; line-height: 1.25; margin-top: 4px; }
+.night-film .muted { font-size: 13px; }
+.night-n { position: absolute; top: 6px; left: 6px; z-index: 1; width: 22px; height: 22px; border-radius: 11px; display: grid; place-items: center; font-size: 12px; font-weight: 700; background: var(--accent); color: var(--bg); }
+.night-swap { position: absolute; left: 50%; top: 32%; transform: translate(-50%, -50%); width: 38px; height: 38px; border-radius: 19px; display: grid; place-items: center; background: var(--sheet); color: var(--accent); border: 0.5px solid var(--rule); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5); }
+.pair { text-align: left; }
