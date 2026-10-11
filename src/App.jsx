@@ -96,6 +96,8 @@ const I = {
   close: <path d="M7 7l10 10M17 7 7 17" />,
   shuffle: <path d="M3 7h3.5c2.5 0 4 1.3 5.5 5s3 5 5.5 5H21M3 17h3.5c1.6 0 2.8-.6 3.8-1.8M13.7 8.8C14.7 7.6 15.9 7 17.5 7H21m-2.5-2.5L21 7l-2.5 2.5m0 5L21 17l-2.5 2.5" />,
   arrow: <path d="M12 5v14M6 13l6 6 6-6" />,
+  wall: <><rect x="3.5" y="3.5" width="7.5" height="7.5" rx="1" /><rect x="13" y="3.5" width="7.5" height="7.5" rx="1" /><rect x="3.5" y="13" width="7.5" height="7.5" rx="1" /><rect x="13" y="13" width="7.5" height="7.5" rx="1" /></>,
+  list: <><path d="M9 6h11M9 12h11M9 18h11" /><circle cx="4.5" cy="6" r="1" fill="currentColor" /><circle cx="4.5" cy="12" r="1" fill="currentColor" /><circle cx="4.5" cy="18" r="1" fill="currentColor" /></>,
 };
 
 // ─── SHARED BITS ────────────────────────────────────────────────────────
@@ -368,6 +370,21 @@ function Library({ films, extra, setExtra, onOpen, onAdd, searchFocus, onFocused
   const [q, setQ] = useState("");
   const [chip, setChip] = useState("all");
   const [sort, setSort] = useState(() => store.get("shelf-sort") || "az");
+  const [view, setView] = useState(() => store.get("shelf-libview") || "list");
+  const [cols, setCols] = useState(() => +store.get("shelf-wallcols") || 4);
+  const changeView = (v) => { setView(v); store.set("shelf-libview", v); };
+  const changeCols = (n) => { const c = Math.max(2, Math.min(6, n)); setCols(c); store.set("shelf-wallcols", String(c)); };
+  const pinch = useRef(null);
+  const onTouchStart = (e) => {
+    if (e.touches.length === 2) pinch.current = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+  };
+  const onTouchMove = (e) => {
+    if (pinch.current == null || e.touches.length !== 2) return;
+    const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+    if (d / pinch.current > 1.25) { changeCols(cols - 1); pinch.current = d; }
+    else if (d / pinch.current < 0.8) { changeCols(cols + 1); pinch.current = d; }
+  };
+  const onTouchEnd = (e) => { if (e.touches.length < 2) pinch.current = null; };
   const inputRef = useRef(null);
   useEffect(() => { if (searchFocus) { inputRef.current?.focus(); onFocused(); } }, [searchFocus]);
 
@@ -400,7 +417,12 @@ function Library({ films, extra, setExtra, onOpen, onAdd, searchFocus, onFocused
       <div className="page">
         <div className="page-head">
           <h1>Library</h1>
-          <button className="icon-btn" onClick={onAdd} aria-label="Add a film"><Icon d={I.plus} size={24} sw={2.2} /></button>
+          <div style={{ display: "flex", gap: 4 }}>
+            <button className="icon-btn" onClick={() => changeView(view === "wall" ? "list" : "wall")} aria-label={view === "wall" ? "Show as list" : "Show as poster wall"}>
+              <Icon d={view === "wall" ? I.list : I.wall} size={22} sw={1.9} />
+            </button>
+            <button className="icon-btn" onClick={onAdd} aria-label="Add a film"><Icon d={I.plus} size={24} sw={2.2} /></button>
+          </div>
         </div>
         <label className="search">
           <Icon d={I.search} size={16} sw={2.2} />
@@ -426,6 +448,15 @@ function Library({ films, extra, setExtra, onOpen, onAdd, searchFocus, onFocused
         </div>
         <div className="lib-bar">
           <span className="tnum">{list.length === films.length ? `${list.length} films` : `${list.length} of ${films.length} films`}</span>
+          {view === "wall" && (
+            <span className="density" role="group" aria-label="Poster size">
+              {[["Large", 3], ["Medium", 4], ["Small", 5]].map(([l, n]) => (
+                <button key={n} className={cols === n ? "on" : ""} aria-pressed={cols === n} onClick={() => changeCols(n)} aria-label={l + " posters"}>
+                  <i style={{ width: 4 + (6 - n) * 2, height: 6 + (6 - n) * 3 }} />
+                </button>
+              ))}
+            </span>
+          )}
           <label className="sort">
             {SORTS[sort][0]}<Icon d={I.down} size={12} sw={2.6} />
             <select value={sort} onChange={(e) => { setSort(e.target.value); store.set("shelf-sort", e.target.value); }} aria-label="Sort by">
@@ -445,7 +476,16 @@ function Library({ films, extra, setExtra, onOpen, onAdd, searchFocus, onFocused
             </div>
           </div>
         )}
-        {groups.map((g) => (
+        {view === "wall" && list.length > 0 && (
+          <div className="wall" style={{ "--cols": cols }} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd}>
+            {groups.flatMap((g) => g.films.map((f, i) => (
+              <button key={f.key} id={grouped && i === 0 ? "L-" + g.letter : undefined} onClick={() => onOpen(f)} aria-label={`${f.name} (${f.year})`}>
+                <Poster path={f.posterPath} title={f.name} size={cols >= 5 ? "w185" : "w342"} />
+              </button>
+            )))}
+          </div>
+        )}
+        {view === "list" && groups.map((g) => (
           <div key={g.letter || "all"}>
             {g.letter && <div className="letter" id={"L-" + g.letter}>{g.letter}</div>}
             {g.films.map((f) => (

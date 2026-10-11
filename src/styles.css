@@ -132,8 +132,21 @@ img { display: block; }
 .film-row .title { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .film-row .meta { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--label-2); white-space: nowrap; overflow: hidden; }
 .film-row .meta .who { overflow: hidden; text-overflow: ellipsis; }
-.rail { position: fixed; z-index: 5; right: max(4px, calc(50% - 276px)); top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: center; }
+.rail { position: fixed; z-index: 5; right: max(4px, calc(50% - 276px)); top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: center; padding: 4px 0; border-radius: 10px; background: rgba(12, 12, 13, 0.6); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
 .rail button { font-size: 10px; font-weight: 600; line-height: 1; color: var(--accent); padding: 2px 6px; }
+
+.wall { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); gap: 2px; padding: 0 2px; touch-action: pan-y; }
+.wall > button { display: block; min-width: 0; }
+.wall > button[id] { scroll-margin-top: 8px; }
+.wall .poster { border-radius: 0; }
+.wall .poster::after { box-shadow: none; }
+.wall > button:active .poster { opacity: 0.75; }
+.wall .poster-empty { font-size: 10px; padding: 5px; }
+.density { display: inline-flex; align-items: flex-end; gap: 2px; padding: 3px; border-radius: 8px; background: var(--fill); }
+.density button { width: 28px; height: 24px; border-radius: 6px; display: grid; place-items: center; }
+.density button i { display: block; border-radius: 1.5px; background: var(--label-2); }
+.density button.on { background: rgba(255, 255, 255, 0.14); }
+.density button.on i { background: var(--accent); }
 
 /* ── Film page ────────────────────────────────────────────── */
 .film-page { position: fixed; z-index: 40; inset: 0 0 var(--tabbar) 0; overflow-y: auto; background: var(--bg); animation: push 0.28s cubic-bezier(.2, .9, .3, 1); overscroll-behavior: contain; }
