@@ -191,9 +191,17 @@ function reflow(update) {
   const named = [];
   const name = (el, n) => { if (el) { el.style.viewTransitionName = n; named.push(el); } };
   const clear = () => named.splice(0).forEach((el) => { el.style.viewTransitionName = ""; });
+  const find = (k) => document.querySelector(`main:not([hidden]) [data-key="${CSS.escape(k)}"] .poster`);
   const keys = [...document.querySelectorAll("main:not([hidden]) [data-key]")].filter(onScreen).slice(0, 60).map((b) => b.dataset.key);
-  keys.forEach((k) => name(document.querySelector(`main:not([hidden]) [data-key="${CSS.escape(k)}"] .poster`), "r" + hashStr(k)));
-  const t = transition("reflow", () => { clear(); update(); }, () => keys.forEach((k) => name(posterFor(k), "r" + hashStr(k))));
+  // Anchor on the top-most film you could see: after the change, scroll so it sits exactly where it was.
+  const anchorKey = keys.find((k) => find(k)?.getBoundingClientRect().top >= 0) || keys[0];
+  const anchorTop = anchorKey ? find(anchorKey).getBoundingClientRect().top : 0;
+  keys.forEach((k) => name(find(k), "r" + hashStr(k)));
+  const t = transition("reflow", () => { clear(); update(); }, () => {
+    const el = anchorKey && find(anchorKey);
+    if (el) window.scrollBy(0, el.getBoundingClientRect().top - anchorTop);
+    keys.forEach((k) => name(posterFor(k), "r" + hashStr(k)));
+  });
   if (t) t.finished.finally(clear); else clear();
 }
 
