@@ -268,3 +268,8 @@ img { display: block; }
 .fchip.more { color: var(--accent); border-style: dashed; }
 .fnote { margin: 0; font-size: 13px; }
 .sheet-body > .fgroup + .fgroup { margin-top: -2px; }
+.fjump { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: 12px -20px 0; padding: 0 20px; }
+.fjump::-webkit-scrollbar { display: none; }
+.fjump button { flex-shrink: 0; font-size: 13px; color: var(--label-2); padding: 5px 10px; border-radius: 7px; background: rgba(255, 255, 255, 0.06); white-space: nowrap; }
+.fjump button.on { color: var(--accent); background: rgba(240, 167, 66, 0.14); font-weight: 600; }
+.fgroup { scroll-margin-top: 4px; }

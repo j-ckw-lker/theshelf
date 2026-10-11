@@ -139,7 +139,7 @@ function Poster({ path, title, size = "w342", className = "", eager = false }) {
   );
 }
 
-function Sheet({ title, onClose, left, right, tall, children, foot }) {
+function Sheet({ title, onClose, left, right, tall, children, foot, sub }) {
   useEffect(() => {
     const onKey = (e) => e.key === "Escape" && onClose();
     document.addEventListener("keydown", onKey);
@@ -155,6 +155,7 @@ function Sheet({ title, onClose, left, right, tall, children, foot }) {
             <h2>{title}</h2>
             <span style={{ justifySelf: "end" }}>{right || <button className="right" onClick={onClose}>Done</button>}</span>
           </div>
+          {sub}
         </div>
         <div className="sheet-body">{children}</div>
         {foot && <div className="sheet-foot">{foot}</div>}
@@ -378,16 +379,37 @@ const byCount = (lists) => {
   lists.forEach((l) => [...new Set(l)].forEach((v) => m.set(v, (m.get(v) || 0) + 1)));
   return [...m].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map((x) => x[0]);
 };
+const GENRE_NAMES = { "Science Fiction": "Sci-fi" };
+// Groups that get long show their biggest few, with an "All N" to open the rest.
+const GROUP_CAP = { label: 10, genre: 12, country: 8, director: 10 };
+let regionNames = null;
+const countryName = (code) => {
+  if (code === "US") return "US";
+  if (code === "GB") return "UK";
+  try { regionNames ||= new Intl.DisplayNames(["en"], { type: "region" }); return regionNames.of(code) || code; } catch { return code; }
+};
 const libGroups = (films, customTags) => {
   const has = (fn) => (f) => f.copies.some(fn);
   const formats = FORMATS.filter((x) => films.some(has((c) => c.format === x)));
   const pkgs = PACKAGES.filter((x) => x !== "Standard" && films.some(has((c) => c.package === x)));
   const labels = byCount(films.map((f) => f.copies.map((c) => c.label).filter(Boolean)));
+  const atLeast = (n, lists) => { const all = byCount(lists); return all.filter((v) => lists.filter((l) => l.includes(v)).length >= n); };
+  const decades = [...new Set(films.map((f) => Math.floor(f.yearNum / 10) * 10).filter(Boolean))].sort((a, b) => b - a);
+  const genres = atLeast(2, films.map((f) => f.genres));
+  const countries = atLeast(2, films.map((f) => f.countries));
+  const directors = atLeast(2, films.map((f) => f.directors));
   return [
     ["format", "Format", [...formats.map((x) => [x, x, has((c) => c.format === x)]), ["none", "Not filled in", (f) => !f.copies.some((c) => c.format)]]],
     ["package", "Packaging", pkgs.map((x) => [x, x, has((c) => c.package === x)])],
     ["label", "Distributor", labels.map((x) => [x, x, has((c) => c.label === x)])],
     ["tag", "Tags", [...Object.entries(TAGS), ...customTags.map((t) => [t, t])].map(([k, l]) => [k, l, (f) => f.tags.includes(k)])],
+    ["decade", "Decade", decades.map((d) => [String(d), d + "s", (f) => f.yearNum >= d && f.yearNum < d + 10])],
+    ["genre", "Genre", genres.map((g) => [g, GENRE_NAMES[g] || g, (f) => f.genres.includes(g)])],
+    ["country", "Country & language", [
+      ...countries.map((c) => [c, countryName(c), (f) => f.countries.includes(c)]),
+      ["foreign", "Not in English", (f) => f.lang && f.lang !== "en"],
+    ]],
+    ["director", "Director", directors.map((d) => [d, d, (f) => f.directors.includes(d)])],
     ["shelf", "Collection", [
       ["recent", "Recently added", (f) => f.recentRank <= 30],
       ["special", "Special editions", (f) => f.special],
@@ -607,23 +629,36 @@ function Library({ films, customTags, extra, setExtra, onOpen, onAdd, searchFocu
 // Everything you can narrow the Library by, in one sheet. Counts are live: each one says
 // how many films you'd see if you tapped it, given everything else that's on.
 function LibraryFilter({ films, groups, sel, active, onToggle, onReset, onClose }) {
-  const [more, setMore] = useState(false);
+  const [more, setMore] = useState({});
   const shown = films.filter(selTest(active)).length;
   const counts = useMemo(() => Object.fromEntries(groups.map(([g, , opts]) => {
     const base = films.filter(selTest(active, g));
     return [g, Object.fromEntries(opts.map(([k, , t]) => [k, base.filter(t).length]))];
   })), [films, groups, active]);
   const on = (g, k) => (sel[g] || []).includes(k);
+  const jumpNav = (
+    <nav className="fjump" aria-label="Jump to a section">
+        {groups.map(([g, name]) => {
+          const n = (sel[g] || []).filter((k) => groups.find((x) => x[0] === g)[2].some((o) => o[0] === k)).length;
+          return (
+            <button key={g} className={n ? "on" : ""} onClick={() => document.getElementById("fg-" + g)?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+              {name.split(" ")[0]}{n > 0 && <span className="tnum"> {n}</span>}
+            </button>
+          );
+        })}
+    </nav>
+  );
   return (
     <Sheet title="Filter" onClose={onClose} tall
       left={active.length ? <button className="left" onClick={onReset}>Reset</button> : null}
+      sub={jumpNav}
       foot={<button className="btn btn-primary" onClick={onClose}>{shown ? `Show ${shown} film${shown === 1 ? "" : "s"}` : "No films match"}</button>}>
       {groups.map(([g, name, opts]) => {
-        const cap = g === "label" && !more ? 10 : Infinity;
+        const cap = more[g] ? Infinity : GROUP_CAP[g] || Infinity;
         const visible = opts.filter((o, i) => i < cap || on(g, o[0]));
         const picked = (sel[g] || []).filter((k) => opts.some((o) => o[0] === k)).length;
         return (
-          <section key={g} className="fgroup">
+          <section key={g} id={"fg-" + g} className="fgroup">
             <div className="fgroup-head">
               <h3>{name}</h3>
               {picked > 1 && <span className="muted">Any of {picked}</span>}
@@ -637,7 +672,7 @@ function LibraryFilter({ films, groups, sel, active, onToggle, onReset, onClose 
                   </button>
                 );
               })}
-              {opts.length > visible.length && <button className="chip fchip more" onClick={() => setMore(true)}>All {opts.length}</button>}
+              {opts.length > visible.length && <button className="chip fchip more" onClick={() => setMore((m) => ({ ...m, [g]: true }))}>All {opts.length}</button>}
             </div>
             {g === "tag" && opts.length <= Object.keys(TAGS).length && <p className="muted fnote">Make your own tags from any film's page.</p>}
           </section>
