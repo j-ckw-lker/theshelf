@@ -426,3 +426,5 @@ html[data-vt="reflow"]::view-transition-old(root), html[data-vt="reflow"]::view-
 .director-stats { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; color: var(--label-2); margin-top: 2px; }
 .director-stats b { color: var(--accent); font-weight: 600; }
 .director-bio { margin: 0; font-size: 14px; line-height: 1.5; color: var(--label-2); cursor: pointer; }
+.sheet-head { touch-action: none; }
+.sheet-head .fjump { touch-action: pan-x; }

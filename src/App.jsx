@@ -219,23 +219,23 @@ function Sheet({ title, onClose, left, right, tall, children, foot, sub }) {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [close]);
-  // Drag down to dismiss: from the header anywhere, from the body once it's scrolled to the top.
+  // Drag down to dismiss, from the header only (grabber and title bar). The body just scrolls,
+  // so scrolling back up through a form can never close the sheet by accident. The sheet trails
+  // your finger with some resistance and needs a real pull (or a hard flick) to let go.
   useEffect(() => {
     const el = sheetRef.current;
     if (!el) return;
-    let y0 = 0, t0 = 0, dy = 0, mode = null;
-    const body = () => el.querySelector(".sheet-body");
+    let y0 = 0, t0 = 0, dy = 0, raw = 0, mode = null;
     const start = (e) => {
-      if (e.touches.length !== 1 || e.target.closest("input, textarea, select, .fjump, .seg, .shelf-row")) { mode = "off"; return; }
-      const inBody = e.target.closest(".sheet-body");
-      if (inBody && body().scrollTop > 0) { mode = "off"; return; }
-      y0 = e.touches[0].clientY; t0 = Date.now(); dy = 0; mode = null;
+      if (e.touches.length !== 1 || !e.target.closest(".sheet-head") || e.target.closest("button, input, .fjump")) { mode = "off"; return; }
+      y0 = e.touches[0].clientY; t0 = Date.now(); dy = 0; raw = 0; mode = null;
     };
     const move = (e) => {
       if (mode === "off") return;
       const d = e.touches[0].clientY - y0;
       if (mode == null) { if (Math.abs(d) < 8) return; mode = d > 0 ? "drag" : "off"; if (mode === "off") return; }
-      dy = Math.max(0, d);
+      raw = Math.max(0, d);
+      dy = raw * 0.75; // a little weight
       if (e.cancelable) e.preventDefault();
       el.style.transition = "none";
       el.style.transform = `translateY(${dy}px)`;
@@ -243,9 +243,9 @@ function Sheet({ title, onClose, left, right, tall, children, foot, sub }) {
     const end = () => {
       if (mode !== "drag") { mode = null; return; }
       mode = null;
-      const fast = dy / Math.max(1, Date.now() - t0) > 0.6 && dy > 40;
-      el.style.transition = "transform 0.28s cubic-bezier(.2,.9,.3,1)";
-      if (dy > Math.min(140, el.offsetHeight * 0.25) || fast) {
+      const fast = raw / Math.max(1, Date.now() - t0) > 1 && raw > 90;
+      el.style.transition = "transform 0.3s cubic-bezier(.2,.9,.3,1)";
+      if (raw > Math.max(170, el.offsetHeight * 0.33) || fast) {
         el.style.transform = "translateY(100%)";
         el.parentElement.classList.add("leaving");
         setTimeout(onClose, 260);
