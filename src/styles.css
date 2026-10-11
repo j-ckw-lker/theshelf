@@ -190,7 +190,7 @@ img { display: block; }
 
 /* ── Sheets ───────────────────────────────────────────────── */
 .scrim { position: fixed; z-index: 60; inset: 0; background: rgba(0, 0, 0, 0.55); display: flex; align-items: flex-end; justify-content: center; animation: fade 0.2s ease-out; }
-.sheet { width: 100%; max-width: 560px; max-height: calc(100vh - var(--top) - 12px); max-height: calc(100dvh - var(--top) - 12px); display: flex; flex-direction: column; background: var(--sheet); border-radius: 14px 14px 0 0; animation: rise 0.3s cubic-bezier(.2, .9, .3, 1); }
+.sheet { width: 100%; max-width: 560px; max-height: calc(100vh - var(--top) - 12px); max-height: calc(100dvh - var(--top) - 12px); display: flex; flex-direction: column; background: var(--sheet); border-radius: 14px 14px 0 0; animation: rise 0.38s cubic-bezier(.2, .9, .3, 1); }
 .sheet.tall { height: calc(100vh - var(--top) - 12px); height: calc(100dvh - var(--top) - 12px); }
 .sheet-head { padding: 8px 20px 12px; border-bottom: 0.5px solid rgba(255, 255, 255, 0.12); }
 .grabber { width: 36px; height: 5px; border-radius: 3px; background: rgba(235, 235, 245, 0.3); margin: 0 auto 10px; }
@@ -366,21 +366,21 @@ input[type="date"].field::-webkit-date-and-time-value { text-align: left; }
 /* ─── Motion ─── */
 .tabbar { view-transition-name: tabbar; }
 .film-head .poster { view-transition-name: film-poster; }
-html[data-vt] .film-page { animation: none; }
-::view-transition-group(film-poster) { animation-duration: 0.38s; animation-timing-function: cubic-bezier(.2, .9, .3, 1); }
+html[data-vt-on] .film-page { animation: none; }
+::view-transition-group(film-poster) { animation-duration: 0.5s; animation-timing-function: cubic-bezier(.2, .9, .3, 1); }
 ::view-transition-old(film-poster), ::view-transition-new(film-poster) { height: 100%; width: 100%; object-fit: cover; border-radius: 4px; }
-html[data-vt="morph"]::view-transition-old(root), html[data-vt="push"]::view-transition-old(root) { animation: vt-out 0.24s ease both; }
-html[data-vt="morph"]::view-transition-new(root), html[data-vt="push"]::view-transition-new(root) { animation: vt-push-in 0.32s cubic-bezier(.2, .9, .3, 1) both; }
-html[data-vt="pop"]::view-transition-old(root) { animation: vt-pop-out 0.28s cubic-bezier(.4, 0, .2, 1) both; z-index: 1; }
-html[data-vt="pop"]::view-transition-new(root) { animation: vt-in 0.22s ease both; }
-html[data-vt="tab"]::view-transition-old(root) { animation: vt-out 0.12s ease both; }
-html[data-vt="tab"]::view-transition-new(root) { animation: vt-in 0.18s ease 0.04s both; }
+html[data-vt="morph"]::view-transition-old(root), html[data-vt="push"]::view-transition-old(root) { animation: vt-out 0.32s ease both; }
+html[data-vt="morph"]::view-transition-new(root), html[data-vt="push"]::view-transition-new(root) { animation: vt-push-in 0.44s cubic-bezier(.2, .9, .3, 1) both; }
+html[data-vt="pop"]::view-transition-old(root) { animation: vt-pop-out 0.38s cubic-bezier(.4, 0, .2, 1) both; z-index: 1; }
+html[data-vt="pop"]::view-transition-new(root) { animation: vt-in 0.3s ease both; }
+html[data-vt="tab"]::view-transition-old(root) { animation: vt-out 0.16s ease both; }
+html[data-vt="tab"]::view-transition-new(root) { animation: vt-in 0.24s ease 0.05s both; }
 @keyframes vt-out { to { opacity: 0; } }
 @keyframes vt-in { from { opacity: 0; } }
 @keyframes vt-push-in { from { opacity: 0; transform: translateX(28px); } }
 @keyframes vt-pop-out { to { opacity: 0; transform: translateX(36%); } }
-.scrim.leaving { animation: fade-out 0.2s ease forwards; }
-.sheet.leaving { animation: sink 0.21s cubic-bezier(.4, 0, 1, 1) forwards; }
+.scrim.leaving { animation: fade-out 0.26s ease forwards; }
+.sheet.leaving { animation: sink 0.27s cubic-bezier(.4, 0, 1, 1) forwards; }
 @keyframes fade-out { to { opacity: 0; } }
 @keyframes sink { to { transform: translateY(100%); } }
 @media (prefers-reduced-motion: reduce) { ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; } }

@@ -163,6 +163,9 @@ function Poster({ path, title, size = "w342", className = "", eager = false }) {
 // the poster you tapped flies into the film page and back, tabs crossfade, the tab bar stays put.
 // Older browsers and Reduce Motion just get the instant change (plus the CSS push on film pages).
 const reduceMotion = () => !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+// Where view transitions run, they own the film-page entrance; the CSS slide-in is only a fallback.
+// (Toggling it per transition replayed the slide-in the moment a transition ended: a visible jitter.)
+if (typeof document !== "undefined" && document.startViewTransition && !reduceMotion()) document.documentElement.dataset.vtOn = "";
 function transition(kind, update, after) {
   if (!document.startViewTransition || reduceMotion()) { update(); after?.(); return; }
   const root = document.documentElement;
@@ -188,7 +191,7 @@ function Sheet({ title, onClose, left, right, tall, children, foot, sub }) {
   const close = useCallback(() => {
     if (reduceMotion()) return onClose();
     setLeaving(true);
-    setTimeout(onClose, 210);
+    setTimeout(onClose, 270);
   }, [onClose]);
   useEffect(() => {
     const onKey = (e) => e.key === "Escape" && close();
@@ -220,11 +223,11 @@ function Sheet({ title, onClose, left, right, tall, children, foot, sub }) {
       if (mode !== "drag") { mode = null; return; }
       mode = null;
       const fast = dy / Math.max(1, Date.now() - t0) > 0.6 && dy > 40;
-      el.style.transition = "transform 0.22s cubic-bezier(.2,.9,.3,1)";
+      el.style.transition = "transform 0.28s cubic-bezier(.2,.9,.3,1)";
       if (dy > Math.min(140, el.offsetHeight * 0.25) || fast) {
         el.style.transform = "translateY(100%)";
         el.parentElement.classList.add("leaving");
-        setTimeout(onClose, 200);
+        setTimeout(onClose, 260);
       } else el.style.transform = "";
     };
     el.addEventListener("touchstart", start, { passive: true });
