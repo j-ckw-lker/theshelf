@@ -558,8 +558,6 @@ function Library({ films, customTags, extra, setExtra, onOpen, onAdd, onSettings
   const inputRef = useRef(null);
   useEffect(() => { if (searchFocus) { inputRef.current?.focus(); onFocused(); } }, [searchFocus]);
 
-  const fives = films.filter((f) => f.rating === 5).length;
-  const never = films.filter((f) => !f.lastWatched).length;
   const query = q.trim().toLowerCase();
   const list = useMemo(() => {
     const test = selTest(active);
@@ -600,11 +598,6 @@ function Library({ films, customTags, extra, setExtra, onOpen, onAdd, onSettings
           <input ref={inputRef} type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Title, director, actor or year" aria-label="Search the library" />
           {q && <button onClick={() => setQ("")} aria-label="Clear search" style={{ color: "var(--label-2)", display: "grid" }}><Icon d={I.close} size={14} sw={2.4} /></button>}
         </label>
-        <div className="strip">
-          <div><b>{films.length}</b><span>Films</span></div>
-          <div><b>{fives}</b><span>Rated five stars</span></div>
-          <div><b>{never}</b><span>Never logged</span></div>
-        </div>
         <div className="chips">
           <button className={"chip chip-x filter-btn" + (nActive ? " active" : "")} onClick={() => setFiltering(true)} aria-label={nActive ? `Filter, ${nActive} on` : "Filter"}>
             <Icon d={I.sliders} size={15} sw={2} />Filter{nActive > 0 && <span className="count tnum">{nActive}</span>}
@@ -1376,9 +1369,10 @@ function Stats({ films, onPerson, onLabel }) {
     <div className="page stats">
       <div className="page-head"><h1>Stats</h1></div>
       <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: -16 }}>
-        <div className="strip">
+        <div className="strip four">
           <div><b>{films.length}</b><span>Films</span></div>
-          <div><b>{s.avg.toFixed(1)}★</b><span>Average rating</span></div>
+          <div><b>{films.filter((f) => f.rating === 5).length}</b><span>Five stars</span></div>
+          <div><b>{s.avg.toFixed(1)}★</b><span>Average</span></div>
           <div><b>{s.never}</b><span>Never logged</span></div>
         </div>
         <p className="stat-lede">You rate the films you own <b>{s.avg.toFixed(2)}</b> on average, against <b>{META.allRated.avg}</b> across all {META.allRated.count.toLocaleString()} films you've rated. The shelf is curated, not hoarded.</p>
