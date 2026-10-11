@@ -361,3 +361,4 @@ input[type="date"].field::-webkit-date-and-time-value { text-align: left; }
 .lib-count .link { font-size: 13px; }
 .lib-bar .sort { flex-shrink: 0; }
 .lib-bar .density { flex-shrink: 0; }
+.theme-chip { color: var(--label-2); border-style: solid; }

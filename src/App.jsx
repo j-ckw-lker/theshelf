@@ -77,7 +77,7 @@ function deriveFilm(raw, userData, watchLog) {
   if (logged && !views.includes(logged)) views.push(logged);
   const lastWatched = [logged, f.lastWatched, views[views.length - 1]].filter(Boolean).sort().pop() || null;
   const sk = sortKey(f.name);
-  return {
+  const out = {
     ...f,
     key,
     tags: u.tags || [],
@@ -107,6 +107,11 @@ function deriveFilm(raw, userData, watchLog) {
     get addedKey() { return this.addedOn || this.addedSince || ""; },
     sortKey: sk, letter: letterOf(sk),
   };
+  // Themes come from TMDB keywords, corrected by hand per film (themesAdd / themesOff).
+  const plus = u.themesAdd || [], minus = u.themesOff || [];
+  out.themesAdd = plus; out.themesOff = minus;
+  out.themes = THEMES.filter(([id, , t]) => plus.includes(id) || (!minus.includes(id) && t(out))).map((x) => x[0]);
+  return out;
 }
 
 // ─── ICONS ──────────────────────────────────────────────────────────────
@@ -477,7 +482,7 @@ const libGroups = (films, customTags) => {
     ["tag", "Tags", [...Object.entries(TAGS), ...customTags.map((t) => [t, t])].map(([k, l]) => [k, l, (f) => f.tags.includes(k)])],
     ["decade", "Decade", decades.map((d) => [String(d), d + "s", (f) => f.yearNum >= d && f.yearNum < d + 10])],
     ["genre", "Genre", genres.map((g) => [g, GENRE_NAMES[g] || g, (f) => f.genres.includes(g)])],
-    ["theme", "Theme", THEMES.map(([k, l, t]) => [k, l, t, films.filter(t).length]).filter((o) => o[3] > 0).sort((a, b) => b[3] - a[3]).map(([k, l, t]) => [k, l, t])],
+    ["theme", "Theme", THEMES.map(([k, l]) => [k, l, (f) => f.themes.includes(k), films.filter((f) => f.themes.includes(k)).length]).filter((o) => o[3] > 0).sort((a, b) => b[3] - a[3]).map(([k, l, t]) => [k, l, t])],
     ["country", "Country & language", [
       ...countries.map((c) => [c, countryName(c), (f) => f.countries.includes(c)]),
       ["foreign", "Not in English", (f) => f.lang && f.lang !== "en"],
@@ -747,9 +752,20 @@ function FilmPage({ film, films, ix, onNight, onBuildAround, allTags, backLabel,
   const [note, setNote] = useState(film.note);
   const [newTag, setNewTag] = useState(null);
   const [editTags, setEditTags] = useState(false);
+  const [editThemes, setEditThemes] = useState(false);
+  // Turning a theme on/off undoes an earlier correction first, so a film can always go back to TMDB's answer.
+  const toggleTheme = (id) => {
+    const u = { add: film.themesAdd || [], off: film.themesOff || [] };
+    const on = film.themes.includes(id);
+    if (on) {
+      if (u.add.includes(id)) onUpdate(film.key, { themesAdd: u.add.filter((x) => x !== id) });
+      else onUpdate(film.key, { themesOff: [...u.off, id] });
+    } else if (u.off.includes(id)) onUpdate(film.key, { themesOff: u.off.filter((x) => x !== id) });
+    else onUpdate(film.key, { themesAdd: [...u.add, id] });
+  };
   const [doomed, setDoomed] = useState(null);
   const ref = useRef(null);
-  useEffect(() => { setNote(film.note); setNewTag(null); setEditTags(false); setDoomed(null); ref.current?.scrollTo(0, 0); }, [film.key]);
+  useEffect(() => { setNote(film.note); setNewTag(null); setEditTags(false); setEditThemes(false); setDoomed(null); ref.current?.scrollTo(0, 0); }, [film.key]);
   const createTag = () => {
     const t = (newTag || "").trim().replace(/\s+/g, " ");
     if (t) { onAddTag(t); if (!film.tags.includes(t)) onUpdate(film.key, { tags: [...film.tags, t] }); }
@@ -916,6 +932,22 @@ function FilmPage({ film, films, ix, onNight, onBuildAround, allTags, backLabel,
                       onBlur={createTag} placeholder="Watch with Dad" aria-label="New tag name" autoFocus maxLength={32} />
                   </form>
                 )}
+            </div>
+          </div>
+
+          <div>
+            <div className="stat-head" style={{ marginBottom: 8 }}>
+              <span className="section-label" style={{ margin: 0 }}>Themes</span>
+              <button className="link" style={{ fontSize: 14 }} onClick={() => setEditThemes(!editThemes)}>{editThemes ? "Done" : film.themes.length ? "Edit themes" : "Add themes"}</button>
+            </div>
+            <div className="tag-row">
+              {(editThemes ? THEMES : THEMES.filter(([id]) => film.themes.includes(id))).map(([id, label]) => {
+                const on = film.themes.includes(id);
+                return editThemes
+                  ? <button key={id} className={"chip" + (on ? " on" : "")} aria-pressed={on} onClick={() => toggleTheme(id)}>{label}</button>
+                  : <span key={id} className="chip theme-chip">{label}</span>;
+              })}
+              {!editThemes && film.themes.length === 0 && <span className="muted" style={{ fontSize: 14 }}>None yet. Themes feed the Theme filter and Home shelves.</span>}
             </div>
           </div>
 

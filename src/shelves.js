@@ -144,7 +144,8 @@ export function buildRecipes(films, customTags = [], pairs = []) {
     if (n >= 6) add({ id: "mus:" + name, kind: "person", title: "Scored by " + name, test: (f) => f.music.includes(name) });
   });
 
-  VIBES.forEach(([id, title, test]) => add({ id, title, test }));
+  // Themes use each film's corrected theme list, so hand edits on a film page flow into Home.
+  VIBES.forEach(([id, title, test]) => add({ id, title, test: THEME_IDS.includes(id) ? (f) => f.themes.includes(id) : test }));
 
   [1960, 1970, 1980, 1990].forEach((d) =>
     add({ id: "dec" + d, title: `The ${String(d).slice(2)}s, on your shelf`, test: (f) => f.yearNum >= d && f.yearNum < d + 10 }));
