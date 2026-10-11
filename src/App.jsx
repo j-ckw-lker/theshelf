@@ -396,7 +396,6 @@ const SORTS = {
   oldest: ["Oldest", (a, b) => a.yearNum - b.yearNum || a.sortKey.localeCompare(b.sortKey)],
   rating: ["Top rated", (a, b) => (b.rating ?? -1) - (a.rating ?? -1) || a.sortKey.localeCompare(b.sortKey)],
   recent: ["Recently added", (a, b) => b.recency - a.recency],
-  dusty: ["Longest unwatched", (a, b) => (a.lastWatched || "").localeCompare(b.lastWatched || "")],
   long: ["Longest runtime", (a, b) => (b.runtime || 0) - (a.runtime || 0)],
 };
 
@@ -404,7 +403,7 @@ function Library({ films, customTags, extra, setExtra, onOpen, onAdd, searchFocu
   const chips = useMemo(() => chipsFor(films, customTags), [films, customTags]);
   const [q, setQ] = useState("");
   const [chip, setChip] = useState("all");
-  const [sort, setSort] = useState(() => store.get("shelf-sort") || "az");
+  const [sort, setSort] = useState(() => (SORTS[store.get("shelf-sort")] ? store.get("shelf-sort") : "az"));
   const [view, setView] = useState(() => store.get("shelf-libview") || "list");
   const [cols, setCols] = useState(() => +store.get("shelf-wallcols") || 4);
   const changeView = (v) => { setView(v); store.set("shelf-libview", v); };
@@ -562,11 +561,13 @@ function Library({ films, customTags, extra, setExtra, onOpen, onAdd, searchFocu
 }
 
 // ─── FILM PAGE ──────────────────────────────────────────────────────────
-function FilmPage({ film, films, allTags, backLabel, onBack, onOpen, onPerson, onUpdate, onLog, onUnlog, onRemove, onPicker, onAddTag, onEditCopy, onEditDetails }) {
+function FilmPage({ film, films, allTags, backLabel, onBack, onOpen, onPerson, onUpdate, onLog, onUnlog, onRemove, onPicker, onAddTag, onRemoveTag, onEditCopy, onEditDetails }) {
   const [note, setNote] = useState(film.note);
   const [newTag, setNewTag] = useState(null);
+  const [editTags, setEditTags] = useState(false);
+  const [doomed, setDoomed] = useState(null);
   const ref = useRef(null);
-  useEffect(() => { setNote(film.note); setNewTag(null); ref.current?.scrollTo(0, 0); }, [film.key]);
+  useEffect(() => { setNote(film.note); setNewTag(null); setEditTags(false); setDoomed(null); ref.current?.scrollTo(0, 0); }, [film.key]);
   const createTag = () => {
     const t = (newTag || "").trim().replace(/\s+/g, " ");
     if (t) { onAddTag(t); if (!film.tags.includes(t)) onUpdate(film.key, { tags: [...film.tags, t] }); }
@@ -702,12 +703,28 @@ function FilmPage({ film, films, allTags, backLabel, onBack, onOpen, onPerson, o
           </dl>
 
           <div>
-            <div className="section-label">Tags</div>
+            <div className="stat-head" style={{ marginBottom: 8 }}>
+              <span className="section-label" style={{ margin: 0 }}>Tags</span>
+              {allTags.some(([k]) => !TAGS[k]) && (
+                <button className="link" style={{ fontSize: 14 }} onClick={() => { setEditTags(!editTags); setDoomed(null); }}>{editTags ? "Done" : "Edit tags"}</button>
+              )}
+            </div>
             <div className="tag-row">
-              {allTags.map(([k, l]) => (
-                <button key={k} className={"chip" + (film.tags.includes(k) ? " on" : "")} aria-pressed={film.tags.includes(k)} onClick={() => toggleTag(k)}>{l}</button>
-              ))}
-              {newTag == null
+              {allTags.map(([k, l]) => {
+                const custom = !TAGS[k];
+                if (editTags && custom) {
+                  const armed = doomed === k;
+                  return (
+                    <button key={k} className="chip chip-x" style={armed ? { borderColor: "var(--danger)", color: "var(--danger)" } : null}
+                      aria-label={armed ? `Delete the tag ${l} from every film` : `Delete the tag ${l}`}
+                      onClick={() => (armed ? (onRemoveTag(k), setDoomed(null)) : setDoomed(k))}>
+                      {armed ? `Delete "${l}"?` : l}<Icon d={I.close} size={12} sw={2.6} />
+                    </button>
+                  );
+                }
+                return <button key={k} className={"chip" + (film.tags.includes(k) ? " on" : "")} aria-pressed={film.tags.includes(k)} onClick={() => toggleTag(k)} disabled={editTags}>{l}</button>;
+              })}
+              {editTags ? null : newTag == null
                 ? <button className="chip chip-x" style={{ color: "var(--accent)", borderStyle: "dashed" }} onClick={() => setNewTag("")}><Icon d={I.plus} size={13} sw={2.6} />New tag</button>
                 : (
                   <form onSubmit={(e) => { e.preventDefault(); createTag(); }} style={{ display: "flex", gap: 6 }}>
@@ -1412,7 +1429,7 @@ export default function App() {
       {tab === "backup" && <main><Backup D={D} films={films} onBuy={(w) => setAdding({ name: w.film, year: w.year, label: w.label })} /></main>}
 
       {top && (
-        <FilmPage key="film" film={top} films={films} allTags={allTags} onAddTag={D.addTag}
+        <FilmPage key="film" film={top} films={films} allTags={allTags} onAddTag={D.addTag} onRemoveTag={D.removeTag}
           onEditCopy={(c) => setCopyEdit({ key: top.key, copy: c })} onEditDetails={() => setDetailsFor(top.key)} backLabel={backLabel} onBack={back} onOpen={openFilm} onPerson={onPerson}
           onUpdate={D.updateFilm} onLog={D.logWatch} onUnlog={D.unlogWatch} onRemove={D.removeFilm} onPicker={() => setPicking(top.key)} />
       )}
