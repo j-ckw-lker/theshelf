@@ -352,3 +352,12 @@ img { display: block; }
 /* iOS date inputs carry an intrinsic width and spill out of their box */
 input[type="date"].field { min-width: 0; max-width: 100%; display: block; -webkit-appearance: none; appearance: none; line-height: 44px; }
 input[type="date"].field::-webkit-date-and-time-value { text-align: left; }
+.lib-filter { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.lib-filter .chip.on { min-width: 0; max-width: 60%; }
+.lib-filter .extra-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lib-bar { gap: 10px; }
+.lib-bar .filter-btn { flex-shrink: 0; }
+.lib-count { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; white-space: nowrap; overflow: hidden; }
+.lib-count .link { font-size: 13px; }
+.lib-bar .sort { flex-shrink: 0; }
+.lib-bar .density { flex-shrink: 0; }

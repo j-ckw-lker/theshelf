@@ -504,7 +504,6 @@ const libGroups = (films, customTags) => {
 // Selected options that still exist (a deleted tag or label quietly drops out).
 const activeOpts = (groups, sel) => groups.map(([g, name, opts]) => [g, name, opts.filter((o) => (sel[g] || []).includes(o[0]))]).filter((x) => x[2].length);
 const selTest = (active, skip) => (f) => active.every(([g, , opts]) => g === skip || opts.some((o) => o[2](f)));
-const SHORTCUTS = [["format", "4K"], ["package", "Steelbook"], ["watch", "five"], ["shelf", "recent"], ["watch", "never"], ["shelf", "special"]];
 
 const SORTS = {
   az: ["Title A–Z", (a, b) => a.sortKey.localeCompare(b.sortKey)],
@@ -530,7 +529,7 @@ function Library({ films, customTags, extra, setExtra, onOpen, onAdd, onSettings
   const [q, setQ] = useState("");
   const byRecent = isOn("shelf", "recent");
   const [sort, setSort] = useState(() => (SORTS[store.get("shelf-sort")] ? store.get("shelf-sort") : "az"));
-  const [view, setView] = useState(() => store.get("shelf-libview") || "list");
+  const [view, setView] = useState(() => store.get("shelf-libview") || "wall");
   const [cols, setCols] = useState(() => +store.get("shelf-wallcols") || 4);
   const changeView = (v) => { setView(v); store.set("shelf-libview", v); };
   const changeCols = (n) => { const c = Math.max(2, Math.min(6, n)); setCols(c); store.set("shelf-wallcols", String(c)); };
@@ -598,27 +597,21 @@ function Library({ films, customTags, extra, setExtra, onOpen, onAdd, onSettings
           <input ref={inputRef} type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Title, director, actor or year" aria-label="Search the library" />
           {q && <button onClick={() => setQ("")} aria-label="Clear search" style={{ color: "var(--label-2)", display: "grid" }}><Icon d={I.close} size={14} sw={2.4} /></button>}
         </label>
-        <div className="chips">
+        {extra && (
+          <div className="lib-filter">
+            <button className="chip on chip-x" onClick={() => setExtra(null)} aria-label={"Remove filter " + extra.label}>
+              <span className="extra-label">{extra.label}</span><Icon d={I.close} size={12} sw={2.6} />
+            </button>
+          </div>
+        )}
+        <div className="lib-bar">
           <button className={"chip chip-x filter-btn" + (nActive ? " active" : "")} onClick={() => setFiltering(true)} aria-label={nActive ? `Filter, ${nActive} on` : "Filter"}>
             <Icon d={I.sliders} size={15} sw={2} />Filter{nActive > 0 && <span className="count tnum">{nActive}</span>}
           </button>
-          {extra && (
-            <button className="chip on chip-x" onClick={() => setExtra(null)} aria-label={"Remove filter " + extra.label}>
-              {extra.label}<Icon d={I.close} size={12} sw={2.6} />
-            </button>
-          )}
-          {active.flatMap(([g, , opts]) => opts.map(([k, l]) => (
-            <button key={g + k} className="chip on chip-x" onClick={() => toggle(g, k)} aria-label={"Remove filter " + l}>
-              {l}<Icon d={I.close} size={12} sw={2.6} />
-            </button>
-          )))}
-          {!nActive && !extra && SHORTCUTS.map(([g, k]) => {
-            const opt = groups.find((x) => x[0] === g)?.[2].find((o) => o[0] === k);
-            return opt && <button key={g + k} className="chip" onClick={() => toggle(g, k)}>{opt[1]}</button>;
-          })}
-        </div>
-        <div className="lib-bar">
-          <span className="tnum">{list.length === films.length ? `${list.length} films` : `${list.length} of ${films.length} films`}</span>
+          <span className="lib-count tnum">
+            {list.length === films.length ? `${list.length} films` : `${list.length} of ${films.length}`}
+            {(nActive > 0 || extra) && <button className="link" onClick={() => { setSel({}); setExtra(null); }}>Clear</button>}
+          </span>
           {view === "wall" && (
             <span className="density" role="group" aria-label="Poster size">
               {[["Large", 3], ["Medium", 4], ["Small", 5]].map(([l, n]) => (
