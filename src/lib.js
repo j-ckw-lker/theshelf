@@ -124,7 +124,7 @@ export const PACKAGES = ["Standard", "Steelbook", "Limited", "Collector's", "Box
 export const REGIONS = ["A", "B", "C", "Free"];
 const LABEL_PATTERNS = [
   [/criterion/, "Criterion"], [/arrow/, "Arrow"], [/vinegar/, "Vinegar Syndrome"], [/radiance/, "Radiance"],
-  [/shout|scream factory/, "Shout! Factory"], [/kino/, "Kino Lorber"], [/\ba24\b/, "A24"], [/film vault/, "The Film Vault"],
+  [/shout|scream factory/, "Shout! Scream Factory"], [/kino/, "Kino Lorber"], [/\ba24\b/, "A24"], [/film vault/, "The Film Vault"],
   [/88 films/, "88 Films"], [/second sight/, "Second Sight"], [/eureka|masters of cinema/, "Eureka"], [/severin/, "Severin"],
   [/umbrella/, "Umbrella"], [/indicator|powerhouse/, "Indicator"], [/imprint/, "Imprint"], [/\bnova\b/, "Nova Media"],
   [/mondo/, "Mondo"], [/zavvi/, "Zavvi"], [/blue underground/, "Blue Underground"], [/synapse/, "Synapse"],
@@ -132,6 +132,13 @@ const LABEL_PATTERNS = [
   [/lionsgate/, "Lionsgate"], [/neon\b/, "Neon"], [/third window/, "Third Window"], [/well go/, "Well Go USA"],
 ];
 export const KNOWN_LABELS = LABEL_PATTERNS.map((l) => l[1]);
+// One name per label, however it was typed. Anything Shout/Scream reads as "Shout! Scream Factory".
+const LABEL_ALIASES = { shout: "Shout! Scream Factory", shoutfactory: "Shout! Scream Factory", screamfactory: "Shout! Scream Factory", shoutscreamfactory: "Shout! Scream Factory" };
+export const canonicalLabel = (l) => {
+  if (!l) return l;
+  const t = l.trim();
+  return LABEL_ALIASES[t.toLowerCase().replace(/[^a-z]/g, "")] || t;
+};
 export const newId = () => Math.random().toString(36).slice(2, 9);
 
 // Turn a free-text Letterboxd note ("2 copies. 4k steelbook & blu ray steelbook") into suggested copies.

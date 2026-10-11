@@ -6,7 +6,7 @@ import { SEED_WANTLIST } from "./wantlist.js";
 import {
   store, readJSON, fkey, img, tmdb, shapeTmdbMovie, todayISO, thisYear, fmtDate, runtimeLabel, stars,
   sortKey, letterOf, peopleLabel, hashStr, rng, shuffled, yearsSince, parseEdition, copyBadges, copyLine, money,
-  FORMATS, PACKAGES, REGIONS, KNOWN_LABELS, newId,
+  FORMATS, PACKAGES, REGIONS, KNOWN_LABELS, canonicalLabel, newId,
 } from "./lib.js";
 import { TAGS, THEMES, makeFilters, filterTest, activeFilterLabels, buildRecipes, dealShelves } from "./shelves.js";
 import { pairIndex, bestPairs, partnersFor, scorePair, nightPlan, reasonLine } from "./pairs.js";
@@ -72,7 +72,8 @@ function deriveFilm(raw, userData, watchLog) {
   const key = fkey(raw);
   const u = userData[key] || {};
   const f = u.match ? { ...raw, ...u.match } : raw; // "Fix the match" swaps in another film's TMDB data
-  const copies = u.copies || parseEdition(f.edition || "").map((c, i) => ({ ...c, id: "s" + i }));
+  const copies = (u.copies || parseEdition(f.edition || "").map((c, i) => ({ ...c, id: "s" + i })))
+    .map((c) => (c.label ? { ...c, label: canonicalLabel(c.label) } : c));
   const logged = watchLog[key];
   const views = f.views ? f.views.slice() : [];
   if (logged && !views.includes(logged)) views.push(logged);
@@ -1246,7 +1247,7 @@ function CopySheet({ film, copy, labels, onSave, onClose }) {
   const [c, setC] = useState(() => copy ? { ...copy, price: copy.price ?? "" } : { id: newId(), format: "", package: "Standard", label: "", region: "", purchased: "", price: "", note: "" });
   const set = (k, v) => setC((x) => ({ ...x, [k]: v }));
   const clean = (x) => {
-    const out = { ...x, id: x.id.startsWith("s") ? newId() : x.id, label: (x.label || "").trim(), note: (x.note || "").trim() };
+    const out = { ...x, id: x.id.startsWith("s") ? newId() : x.id, label: canonicalLabel((x.label || "").trim()), note: (x.note || "").trim() };
     const n = parseFloat(String(x.price).replace(/[$,]/g, ""));
     if (isNaN(n)) delete out.price; else out.price = n;
     if (!out.purchased) delete out.purchased;
