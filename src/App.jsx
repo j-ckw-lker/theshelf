@@ -250,10 +250,6 @@ function Home({ films, recipes, filters, home, setHome, onOpen, onSeeAll, onSear
             <button className="icon-btn glass" onClick={onSearch} aria-label="Search the library"><Icon d={I.search} size={17} sw={2.2} /></button>
           </div>
           <div className="hero-bottom">
-            <div className="hero-line">
-              <span>Tonight · {eligible.length === 1 ? "1 film fits" : eligible.length + " films fit"}</span>
-              <button className="filter-btn" onClick={onFilters}>{filterLabel}<Icon d={I.down} size={11} sw={2.8} /></button>
-            </div>
             {pick ? (
               <button className="hero-title" onClick={() => onOpen(pick)} aria-label={"Open " + pick.name}>
                 {pick.logo && !logoFailed
@@ -286,6 +282,10 @@ function Home({ films, recipes, filters, home, setHome, onOpen, onSeeAll, onSear
               <button className="btn btn-outline" onClick={() => onFilters("reset")}>Reset all</button>
             </div>
           )}
+          <div className="tonight-line">
+            <span className="tnum">{eligible.length === 1 ? "1 film fits" : eligible.length + " films fit"}{labels.length ? "" : " tonight"}</span>
+            <button className="filter-btn" onClick={onFilters}>{filterLabel}<Icon d={I.down} size={11} sw={2.8} /></button>
+          </div>
         </div>
 
         <div className="deal-head">
