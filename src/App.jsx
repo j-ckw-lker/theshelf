@@ -401,6 +401,12 @@ const SORTS = {
 
 function Library({ films, customTags, extra, setExtra, onOpen, onAdd, searchFocus, onFocused }) {
   const chips = useMemo(() => chipsFor(films, customTags), [films, customTags]);
+  const quick = chips.filter((c) => !c[0].startsWith("tag:") && !c[0].startsWith("label:"));
+  const counted = (prefix) => chips.filter((c) => c[0].startsWith(prefix)).map((c) => [...c, films.filter(c[2]).length]);
+  const tagOpts = useMemo(() => counted("tag:"), [chips, films]);
+  const labelOpts = useMemo(() => counted("label:"), [chips, films]);
+  const [picker, setPicker] = useState(null);
+  useBodyLock(!!picker);
   const [q, setQ] = useState("");
   const [chip, setChip] = useState("all");
   const [sort, setSort] = useState(() => (SORTS[store.get("shelf-sort")] ? store.get("shelf-sort") : "az"));
@@ -486,7 +492,19 @@ function Library({ films, customTags, extra, setExtra, onOpen, onAdd, searchFocu
           </div>
         )}
         <div className="chips">
-          {chips.map(([k, l]) => (
+          {[["tags", "Tags", tagOpts], ["labels", "Labels", labelOpts]].map(([kind, name, opts]) => {
+            const sel = opts.find((o) => o[0] === chip);
+            if (!opts.length && kind === "labels") return null;
+            return sel ? (
+              <button key={kind} className="chip on chip-x" onClick={() => setChip("all")} aria-label={`Clear ${name.toLowerCase()} filter ${sel[1]}`}>
+                {sel[1]}<Icon d={I.close} size={12} sw={2.6} />
+              </button>
+            ) : (
+              <button key={kind} className="chip chip-x" onClick={() => setPicker(kind)}>{name}<Icon d={I.down} size={12} sw={2.6} /></button>
+            );
+          })}
+          <span aria-hidden="true" style={{ width: 1, flexShrink: 0, background: "var(--rule)", margin: "4px 2px" }} />
+          {quick.map(([k, l]) => (
             <button key={k} className={"chip" + (chip === k ? " on" : "")} aria-pressed={chip === k} onClick={() => setChip(k)}>{l}</button>
           ))}
         </div>
@@ -550,6 +568,35 @@ function Library({ films, customTags, extra, setExtra, onOpen, onAdd, searchFocu
           </div>
         ))}
       </div>
+
+      {picker && (
+        <Sheet title={picker === "tags" ? "Filter by tag" : "Filter by label"} onClose={() => setPicker(null)}>
+          {(picker === "tags" ? tagOpts : labelOpts).length === 0 && <div className="empty">No labels yet. Add one to a copy on any film's page.</div>}
+          <div>
+            {picker === "tags" && <div className="section-label">Built in</div>}
+            {(picker === "tags" ? tagOpts.filter((o) => TAGS[o[0].slice(4)]) : labelOpts).map(([k, l, , n]) => (
+              <button key={k} className="list-row" style={{ width: "100%", textAlign: "left" }} onClick={() => { setChip(k); setPicker(null); }} disabled={!n}>
+                <span className="grow" style={{ opacity: n ? 1 : 0.4 }}>{l}</span>
+                <span className="muted tnum">{n}</span>
+                {chip === k && <span className="accent" style={{ display: "grid" }}><Icon d={I.check} size={16} sw={2.6} /></span>}
+              </button>
+            ))}
+          </div>
+          {picker === "tags" && (
+            <div>
+              <div className="section-label">Yours</div>
+              {tagOpts.filter((o) => !TAGS[o[0].slice(4)]).map(([k, l, , n]) => (
+                <button key={k} className="list-row" style={{ width: "100%", textAlign: "left" }} onClick={() => { setChip(k); setPicker(null); }} disabled={!n}>
+                  <span className="grow" style={{ opacity: n ? 1 : 0.4 }}>{l}</span>
+                  <span className="muted tnum">{n}</span>
+                  {chip === k && <span className="accent" style={{ display: "grid" }}><Icon d={I.check} size={16} sw={2.6} /></span>}
+                </button>
+              ))}
+              {customTags.length === 0 && <div className="muted" style={{ fontSize: 14, padding: "8px 0" }}>Make your own tags from any film's page, under Tags.</div>}
+            </div>
+          )}
+        </Sheet>
+      )}
 
       {grouped && list.length > 40 && (
         <nav className={"rail" + (railOn ? " on" : "")} aria-label="Jump to letter" aria-hidden={!railOn}>
