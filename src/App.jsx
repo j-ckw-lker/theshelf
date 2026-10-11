@@ -45,7 +45,7 @@ function useData() {
     },
     removeTag: (name) => { setCustomTags((t) => t.filter((x) => x !== name)); retag((tags) => tags.filter((x) => x !== name)); },
     updateFilm: (k, u) => setUserData((d) => ({ ...d, [k]: { ...(d[k] || {}), ...u } })),
-    addFilm: (f) => setAdded((a) => [...a, { ...f, userAdded: true }]),
+    addFilm: (f) => setAdded((a) => [...a, { addedAt: todayISO(), ...f, userAdded: true }]),
     patchAdded: (k, patch) => setAdded((a) => a.map((f) => (fkey(f) === k ? { ...f, ...patch } : f))),
     removeFilm: (k) => setAdded((a) => a.filter((f) => fkey(f) !== k)),
     logWatch: (k) => setWatchLog((w) => ({ ...w, [k]: todayISO() })),
@@ -89,9 +89,14 @@ function deriveFilm(raw, userData, watchLog) {
     copies,
     copiesSuggested: !u.copies && copies.length > 0,
     badges: copyBadges(copies),
+    // When it joined the shelf: earliest copy purchase date, else the day it was added here, else reconstructed history.
+    addedOn: copies.map((c) => c.purchased).filter(Boolean).sort()[0] || f.addedAt || f.added || null,
+    addedSince: f.addedSince || null,
     special: copies.some((c) => (c.package && c.package !== "Standard") || c.label),
     views, lastWatched,
     yearNum: parseInt(f.year) || 0,
+    recency: f.userAdded ? 1e6 + (Date.parse(f.addedAt || "2026-10-11") / 864e5) : (f.added || 0),
+    get addedKey() { return this.addedOn || this.addedSince || ""; },
     sortKey: sk, letter: letterOf(sk),
   };
 }
@@ -372,6 +377,7 @@ const CHIPS = [
   ["editions", "Special editions", (f) => f.special],
   ["4k", "4K", (f) => f.badges.includes("4K")],
   ["u120", "Under 2 hours", (f) => f.runtime && f.runtime < 120],
+  ["recent", "Recently added", (f) => f.recentRank <= 30],
   ["never", "Never logged", (f) => !f.lastWatched],
   ["added", "Added here", (f) => !!f.userAdded],
   ...Object.entries(TAGS).map(([k, l]) => ["tag:" + k, l, (f) => f.tags.includes(k)]),
@@ -389,6 +395,7 @@ const SORTS = {
   newest: ["Newest", (a, b) => b.yearNum - a.yearNum || a.sortKey.localeCompare(b.sortKey)],
   oldest: ["Oldest", (a, b) => a.yearNum - b.yearNum || a.sortKey.localeCompare(b.sortKey)],
   rating: ["Top rated", (a, b) => (b.rating ?? -1) - (a.rating ?? -1) || a.sortKey.localeCompare(b.sortKey)],
+  recent: ["Recently added", (a, b) => b.recency - a.recency],
   dusty: ["Longest unwatched", (a, b) => (a.lastWatched || "").localeCompare(b.lastWatched || "")],
   long: ["Longest runtime", (a, b) => (b.runtime || 0) - (a.runtime || 0)],
 };
@@ -435,9 +442,9 @@ function Library({ films, customTags, extra, setExtra, onOpen, onAdd, searchFocu
       .filter((f) => chipTest(f) && (!extra || extra.test(f)))
       .filter((f) => !query || f.name.toLowerCase().includes(query) || f.year === query
         || f.directors.some((d) => d.toLowerCase().includes(query)) || f.cast.some((c) => c.toLowerCase().includes(query)))
-      .sort(SORTS[sort][1]);
+      .sort(SORTS[chip === "recent" ? "recent" : sort][1]);
   }, [films, chips, chip, extra, query, sort]);
-  const grouped = sort === "az";
+  const grouped = sort === "az" && chip !== "recent";
   const groups = useMemo(() => {
     if (!grouped) return [{ letter: null, films: list }];
     const out = [];
@@ -496,7 +503,7 @@ function Library({ films, customTags, extra, setExtra, onOpen, onAdd, searchFocu
             </span>
           )}
           <label className="sort">
-            {SORTS[sort][0]}<Icon d={I.down} size={12} sw={2.6} />
+            {SORTS[chip === "recent" ? "recent" : sort][0]}<Icon d={I.down} size={12} sw={2.6} />
             <select value={sort} onChange={(e) => { setSort(e.target.value); store.set("shelf-sort", e.target.value); }} aria-label="Sort by">
               {Object.entries(SORTS).map(([k, [l]]) => <option key={k} value={k}>{l}</option>)}
             </select>
@@ -1358,6 +1365,7 @@ export default function App() {
     const seedKeys = new Set(SEED_COLLECTION.map(fkey));
     return [...SEED_COLLECTION, ...D.added.filter((f) => !seedKeys.has(fkey(f)))].map((f) => deriveFilm(f, D.userData, D.watchLog));
   }, [D.added, D.userData, D.watchLog]);
+  useMemo(() => { [...films].sort((a, b) => b.recency - a.recency).forEach((f, i) => { f.recentRank = i + 1; }); }, [films]);
   const byKey = useMemo(() => new Map(films.map((f) => [f.key, f])), [films]);
   const recipes = useMemo(() => buildRecipes(films, D.customTags), [films, D.customTags]);
   const defs = useMemo(() => makeFilters(D.customTags), [D.customTags]);
@@ -1429,7 +1437,7 @@ export default function App() {
         <PosterPicker film={byKey.get(picking)} onClose={() => setPicking(null)}
           onPick={(p) => { D.updateFilm(picking, { poster: p }); setPicking(null); }} />
       )}
-      {adding && <AddSheet prefill={adding} existing={films} onAdd={(f) => { D.addFilm(f); setAdding(null); }} onClose={() => setAdding(null)} />}
+      {adding && <AddSheet prefill={adding} existing={films} onAdd={(f) => { D.addFilm({ ...f, addedAt: todayISO() }); setAdding(null); }} onClose={() => setAdding(null)} />}
     </div>
   );
 }

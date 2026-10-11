@@ -148,6 +148,7 @@ export function buildRecipes(films, customTags = []) {
   add({ id: "epic", title: "Clear the evening: 2½ hours+", test: (f) => f.runtime >= 150, sub: (f) => runtimeLabel(f.runtime) });
   add({ id: "dusty", title: "Not watched in over 2 years", test: (f) => f.lastWatched && yearsSince(f.lastWatched) > 2, sub: (f) => "Last " + f.lastWatched.slice(0, 4) });
   add({ id: "never", title: "On the shelf, never logged", test: (f) => !f.lastWatched });
+  add({ id: "fresh", title: "Fresh on the shelf", weight: 3, test: (f) => f.recentRank <= 15, sub: (f) => (f.lastWatched ? f.year : "Not watched yet") });
   add({ id: "editions", title: "Special editions", min: 4, test: (f) => f.special, sub: (f) => f.badges[0] || "Special edition" });
   // Shelves you curate yourself (tags, labels) get dealt more often than generic ones.
   [["comfort", "Comfort picks"], ["rewatch", "Due a rewatch"], ["hidden", "Hidden gems"], ["upgrade", "Upgrade candidates"]]
