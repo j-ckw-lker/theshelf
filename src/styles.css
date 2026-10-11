@@ -362,3 +362,25 @@ input[type="date"].field::-webkit-date-and-time-value { text-align: left; }
 .lib-bar .sort { flex-shrink: 0; }
 .lib-bar .density { flex-shrink: 0; }
 .theme-chip { color: var(--label-2); border-style: solid; }
+
+/* ─── Motion ─── */
+.tabbar { view-transition-name: tabbar; }
+.film-head .poster { view-transition-name: film-poster; }
+html[data-vt] .film-page { animation: none; }
+::view-transition-group(film-poster) { animation-duration: 0.38s; animation-timing-function: cubic-bezier(.2, .9, .3, 1); }
+::view-transition-old(film-poster), ::view-transition-new(film-poster) { height: 100%; width: 100%; object-fit: cover; border-radius: 4px; }
+html[data-vt="morph"]::view-transition-old(root), html[data-vt="push"]::view-transition-old(root) { animation: vt-out 0.24s ease both; }
+html[data-vt="morph"]::view-transition-new(root), html[data-vt="push"]::view-transition-new(root) { animation: vt-push-in 0.32s cubic-bezier(.2, .9, .3, 1) both; }
+html[data-vt="pop"]::view-transition-old(root) { animation: vt-pop-out 0.28s cubic-bezier(.4, 0, .2, 1) both; z-index: 1; }
+html[data-vt="pop"]::view-transition-new(root) { animation: vt-in 0.22s ease both; }
+html[data-vt="tab"]::view-transition-old(root) { animation: vt-out 0.12s ease both; }
+html[data-vt="tab"]::view-transition-new(root) { animation: vt-in 0.18s ease 0.04s both; }
+@keyframes vt-out { to { opacity: 0; } }
+@keyframes vt-in { from { opacity: 0; } }
+@keyframes vt-push-in { from { opacity: 0; transform: translateX(28px); } }
+@keyframes vt-pop-out { to { opacity: 0; transform: translateX(36%); } }
+.scrim.leaving { animation: fade-out 0.2s ease forwards; }
+.sheet.leaving { animation: sink 0.21s cubic-bezier(.4, 0, 1, 1) forwards; }
+@keyframes fade-out { to { opacity: 0; } }
+@keyframes sink { to { transform: translateY(100%); } }
+@media (prefers-reduced-motion: reduce) { ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; } }

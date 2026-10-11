@@ -10,6 +10,7 @@ import {
 } from "./lib.js";
 import { TAGS, THEMES, makeFilters, filterTest, activeFilterLabels, buildRecipes, dealShelves } from "./shelves.js";
 import { pairIndex, bestPairs, partnersFor, scorePair, nightPlan, reasonLine } from "./pairs.js";
+import { flushSync } from "react-dom";
 import "./styles.css";
 
 // ════════════════════════════════════════════════════════════════════════
@@ -157,21 +158,95 @@ function Poster({ path, title, size = "w342", className = "", eager = false }) {
   );
 }
 
+// ─── MOTION ─────────────────────────────────────────────────────────────
+// Screen changes run through the View Transitions API where the browser has it (iOS 18+):
+// the poster you tapped flies into the film page and back, tabs crossfade, the tab bar stays put.
+// Older browsers and Reduce Motion just get the instant change (plus the CSS push on film pages).
+const reduceMotion = () => !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+function transition(kind, update, after) {
+  if (!document.startViewTransition || reduceMotion()) { update(); after?.(); return; }
+  const root = document.documentElement;
+  root.dataset.vt = kind;
+  let t;
+  try {
+    t = document.startViewTransition(() => { flushSync(update); after?.(); });
+  } catch { delete root.dataset.vt; update(); return; }
+  t.finished.finally(() => { if (root.dataset.vt === kind) delete root.dataset.vt; });
+  return t;
+}
+const posterFor = (key) => {
+  const el = document.querySelector(`main:not([hidden]) [data-key="${CSS.escape(key)}"] .poster`);
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  return r.bottom > 0 && r.top < window.innerHeight && r.width > 0 ? el : null;
+};
+
 function Sheet({ title, onClose, left, right, tall, children, foot, sub }) {
+  const sheetRef = useRef(null);
+  const [leaving, setLeaving] = useState(false);
+  // Close with a slide down instead of vanishing.
+  const close = useCallback(() => {
+    if (reduceMotion()) return onClose();
+    setLeaving(true);
+    setTimeout(onClose, 210);
+  }, [onClose]);
   useEffect(() => {
-    const onKey = (e) => e.key === "Escape" && onClose();
+    const onKey = (e) => e.key === "Escape" && close();
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
+  }, [close]);
+  // Drag down to dismiss: from the header anywhere, from the body once it's scrolled to the top.
+  useEffect(() => {
+    const el = sheetRef.current;
+    if (!el) return;
+    let y0 = 0, t0 = 0, dy = 0, mode = null;
+    const body = () => el.querySelector(".sheet-body");
+    const start = (e) => {
+      if (e.touches.length !== 1 || e.target.closest("input, textarea, select, .fjump, .seg, .shelf-row")) { mode = "off"; return; }
+      const inBody = e.target.closest(".sheet-body");
+      if (inBody && body().scrollTop > 0) { mode = "off"; return; }
+      y0 = e.touches[0].clientY; t0 = Date.now(); dy = 0; mode = null;
+    };
+    const move = (e) => {
+      if (mode === "off") return;
+      const d = e.touches[0].clientY - y0;
+      if (mode == null) { if (Math.abs(d) < 8) return; mode = d > 0 ? "drag" : "off"; if (mode === "off") return; }
+      dy = Math.max(0, d);
+      if (e.cancelable) e.preventDefault();
+      el.style.transition = "none";
+      el.style.transform = `translateY(${dy}px)`;
+    };
+    const end = () => {
+      if (mode !== "drag") { mode = null; return; }
+      mode = null;
+      const fast = dy / Math.max(1, Date.now() - t0) > 0.6 && dy > 40;
+      el.style.transition = "transform 0.22s cubic-bezier(.2,.9,.3,1)";
+      if (dy > Math.min(140, el.offsetHeight * 0.25) || fast) {
+        el.style.transform = "translateY(100%)";
+        el.parentElement.classList.add("leaving");
+        setTimeout(onClose, 200);
+      } else el.style.transform = "";
+    };
+    el.addEventListener("touchstart", start, { passive: true });
+    el.addEventListener("touchmove", move, { passive: false });
+    el.addEventListener("touchend", end);
+    el.addEventListener("touchcancel", end);
+    return () => {
+      el.removeEventListener("touchstart", start);
+      el.removeEventListener("touchmove", move);
+      el.removeEventListener("touchend", end);
+      el.removeEventListener("touchcancel", end);
+    };
   }, [onClose]);
   return (
-    <div className="scrim" onClick={onClose}>
-      <div className={"sheet" + (tall ? " tall" : "")} role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
+    <div className={"scrim" + (leaving ? " leaving" : "")} onClick={close}>
+      <div ref={sheetRef} className={"sheet" + (tall ? " tall" : "") + (leaving ? " leaving" : "")} role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
         <div className="sheet-head">
           <div className="grabber" />
           <div className="sheet-bar">
             <span>{left}</span>
             <h2>{title}</h2>
-            <span style={{ justifySelf: "end" }}>{right || <button className="right" onClick={onClose}>Done</button>}</span>
+            <span style={{ justifySelf: "end" }}>{right || <button className="right" onClick={close}>Done</button>}</span>
           </div>
           {sub}
         </div>
@@ -398,7 +473,7 @@ function Home({ films, defs, recipes, filters, home, setHome, onOpen, onSeeAll, 
             ) : (
               <div className="shelf-row">
                 {s.deal.map((f) => (
-                  <button key={f.key} className="shelf-item" onClick={() => onOpen(f)}>
+                  <button key={f.key} data-key={f.key} className="shelf-item" onClick={(e) => onOpen(f, e)}>
                     <Poster path={f.posterPath} title={f.name} size="w185" />
                     <span>{s.sub(f)}</span>
                   </button>
@@ -650,7 +725,7 @@ function Library({ films, customTags, extra, setExtra, onOpen, onAdd, onSettings
         {view === "wall" && list.length > 0 && (
           <div className="wall" style={{ "--cols": cols }} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd}>
             {letters.flatMap((g) => g.films.map((f, i) => (
-              <button key={f.key} id={grouped && i === 0 ? "L-" + g.letter : undefined} onClick={() => onOpen(f)} aria-label={`${f.name} (${f.year})`}>
+              <button key={f.key} data-key={f.key} id={grouped && i === 0 ? "L-" + g.letter : undefined} onClick={(e) => onOpen(f, e)} aria-label={`${f.name} (${f.year})`}>
                 <Poster path={f.posterPath} title={f.name} size={cols >= 5 ? "w185" : "w342"} />
               </button>
             )))}
@@ -660,7 +735,7 @@ function Library({ films, customTags, extra, setExtra, onOpen, onAdd, onSettings
           <div key={g.letter || "all"}>
             {g.letter && <div className="letter" id={"L-" + g.letter}>{g.letter}</div>}
             {g.films.map((f) => (
-              <button key={f.key} className="film-row" onClick={() => onOpen(f)}>
+              <button key={f.key} data-key={f.key} className="film-row" onClick={(e) => onOpen(f, e)}>
                 <Poster path={f.posterPath} title={f.name} size="w92" className="thumb" />
                 <span className="body">
                   <span className="title">{f.name}</span>
@@ -804,7 +879,7 @@ function FilmPage({ film, films, ix, onNight, onBuildAround, allTags, backLabel,
       const fast = dx / Math.max(1, Date.now() - t0) > 0.5 && dx > 40;
       if (dx > w * 0.33 || fast) {
         set(w, true);
-        setTimeout(() => { set(0, false); onBack(); }, 220);
+        setTimeout(() => { set(0, false); onBack({ swiped: true }); }, 220);
       } else set(0, true);
     };
     el.addEventListener("touchstart", start, { passive: true });
@@ -1906,9 +1981,32 @@ export default function App() {
   const top = stack.length ? byKey.get(stack[stack.length - 1]) : null;
   useBodyLock(!!top || !!adding || !!picking || showFilters || !!copyEdit || !!detailsFor || !!night || settings);
 
-  const openFilm = (f) => setStack((s) => (s[s.length - 1] === f.key ? s : [...s, f.key]));
-  const back = () => setStack((s) => s.slice(0, -1));
-  const goTab = (t) => { if (t !== tab) forgetScroll(); setStack([]); if (t === tab) window.scrollTo({ top: 0, behavior: "smooth" }); else { setTab(t); window.scrollTo(0, 0); } };
+  const openFilm = (f, e) => {
+    const push = () => setStack((s) => (s[s.length - 1] === f.key ? s : [...s, f.key]));
+    const el = e?.currentTarget?.querySelector?.(".poster");
+    if (!el) return transition("push", push);
+    // Name the tapped poster for the old snapshot, then hand the name to the film page's poster.
+    el.style.viewTransitionName = "film-poster";
+    transition("morph", () => { el.style.viewTransitionName = ""; push(); });
+  };
+  const back = (opts) => {
+    const leaving = stack[stack.length - 1];
+    const pop = () => setStack((s) => s.slice(0, -1));
+    if (opts?.swiped || !leaving) return pop();
+    let target = null;
+    const t = transition("pop", pop, () => {
+      // Back to the grid or shelf: fly the poster home if its spot is on screen.
+      if (stack.length > 1) return;
+      target = posterFor(leaving);
+      if (target) target.style.viewTransitionName = "film-poster";
+    });
+    t?.finished.finally(() => { if (target) target.style.viewTransitionName = ""; });
+  };
+  const goTab = (t) => {
+    if (t === tab) { setStack([]); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
+    forgetScroll();
+    transition("tab", () => { setStack([]); setTab(t); window.scrollTo(0, 0); });
+  };
   const toLibrary = (filter) => { forgetScroll(); setExtra(filter); setStack([]); setTab("library"); window.scrollTo(0, 0); };
   const onPerson = (name) => toLibrary({ label: name, test: (f) => f.directors.includes(name) || f.dop.includes(name) || f.music.includes(name) || f.cast.includes(name) });
   const buildAround = (f) => { forgetScroll(); setAnchor(f.key); setDblView("build"); setStack([]); setNight(null); setTab("doubles"); window.scrollTo(0, 0); };
