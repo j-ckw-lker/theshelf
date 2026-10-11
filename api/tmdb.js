@@ -7,7 +7,7 @@ const ALLOWED = [
   /^\/(movie|tv)\/\d+$/,
   /^\/(movie|tv)\/\d+\/images$/,
 ];
-const PASS_PARAMS = ["query", "year", "include_image_language", "language", "page"];
+const PASS_PARAMS = ["query", "year", "include_image_language", "language", "page", "append_to_response"];
 
 export default async function handler(req, res) {
   const key = (process.env.TMDB_API_KEY || process.env.TMDB || "").trim();

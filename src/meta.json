@@ -1,0 +1,65 @@
+{
+ "exportedAt": "2026-09-30",
+ "allRated": {
+  "avg": 3.28,
+  "count": 2295
+ },
+ "fiveStarNotOwned": 23,
+ "rankedDirectors": [
+  {
+   "name": "Stanley Kubrick",
+   "owned": 5,
+   "seen": 6
+  },
+  {
+   "name": "David Fincher",
+   "owned": 9,
+   "seen": 11
+  },
+  {
+   "name": "Martin Scorsese",
+   "owned": 13,
+   "seen": 16
+  },
+  {
+   "name": "Brian De Palma",
+   "owned": 6,
+   "seen": 8
+  },
+  {
+   "name": "Denis Villeneuve",
+   "owned": 5,
+   "seen": 7
+  },
+  {
+   "name": "Christopher Nolan",
+   "owned": 8,
+   "seen": 12
+  },
+  {
+   "name": "Quentin Tarantino",
+   "owned": 6,
+   "seen": 9
+  },
+  {
+   "name": "Coen brothers",
+   "owned": 6,
+   "seen": 12
+  },
+  {
+   "name": "Park Chan-wook",
+   "owned": 2,
+   "seen": 6
+  },
+  {
+   "name": "Yorgos Lanthimos",
+   "owned": 1,
+   "seen": 5
+  },
+  {
+   "name": "John Carpenter",
+   "owned": 4,
+   "seen": 24
+  }
+ ]
+}

@@ -1,0 +1,172 @@
+// Tonight's filters and Home's shelf recipes. Each test takes a derived film
+// (see deriveFilm in App.jsx): genres, countries, keywords, runtime, tags, badges…
+
+import { yearsSince, rng, shuffled, runtimeLabel } from "./lib.js";
+
+export const TAGS = {
+  comfort: "Comfort",
+  upgrade: "Upgrade",
+  hidden: "Gem",
+  rewatch: "Rewatch",
+  sell: "Sell",
+};
+
+const hasGenre = (g) => (f) => f.genres.includes(g);
+const hasKw = (...ks) => (f) => ks.some((k) => f.keywords.includes(k));
+const fromCountry = (...cs) => (f) => cs.some((c) => f.countries.includes(c));
+const tagged = (t) => (f) => f.tags.includes(t);
+
+// ─── Tonight's filters ──────────────────────────────────────────────────
+// [key, label, [[optionKey, label, test], …]]. "any" is implied first.
+export const FILTERS = [
+  ["mood", "Mood", [
+    ["comfort", "Comfort", (f) => (f.rating ?? 0) >= 4.5 || f.tags.includes("comfort")],
+    ["five", "5 stars", (f) => f.rating === 5],
+    ["rewatch", "Tagged rewatch", tagged("rewatch")],
+    ["gem", "Tagged gem", tagged("hidden")],
+  ]],
+  ["genre", "Genre", [
+    ["action", "Action", hasGenre("Action")],
+    ["animation", "Animation", hasGenre("Animation")],
+    ["comedy", "Comedy", hasGenre("Comedy")],
+    ["crime", "Crime", hasGenre("Crime")],
+    ["drama", "Drama", hasGenre("Drama")],
+    ["fantasy", "Fantasy", hasGenre("Fantasy")],
+    ["horror", "Horror", hasGenre("Horror")],
+    ["mystery", "Mystery", hasGenre("Mystery")],
+    ["romance", "Romance", hasGenre("Romance")],
+    ["scifi", "Sci-fi", hasGenre("Science Fiction")],
+    ["thriller", "Thriller", hasGenre("Thriller")],
+    ["war", "War", hasGenre("War")],
+  ]],
+  ["country", "Country", [
+    ["us", "US", fromCountry("US")],
+    ["uk", "UK", fromCountry("GB")],
+    ["japan", "Japan", fromCountry("JP")],
+    ["hk", "Hong Kong & Korea", fromCountry("HK", "KR", "TW", "CN")],
+    ["europe", "France & Italy", fromCountry("FR", "IT")],
+  ]],
+  ["era", "Era", [
+    ["pre70", "Before 1970", (f) => f.yearNum < 1970],
+    ["7080", "70s & 80s", (f) => f.yearNum >= 1970 && f.yearNum < 1990],
+    ["9000", "90s & 00s", (f) => f.yearNum >= 1990 && f.yearNum < 2010],
+    ["recent", "2010 on", (f) => f.yearNum >= 2010],
+  ]],
+  ["length", "Length", [
+    ["u100", "Under 100 min", (f) => f.runtime && f.runtime < 100],
+    ["u120", "Under 2 hours", (f) => f.runtime && f.runtime < 120],
+    ["mid", "2 to 2½ hours", (f) => f.runtime >= 120 && f.runtime < 150],
+    ["epic", "2½ hours+", (f) => f.runtime >= 150],
+  ]],
+  ["seen", "Last watched", [
+    ["y1", "Over a year ago", (f) => f.lastWatched && yearsSince(f.lastWatched) > 1],
+    ["y2", "Over 2 years ago", (f) => f.lastWatched && yearsSince(f.lastWatched) > 2],
+    ["never", "Never logged", (f) => !f.lastWatched],
+  ]],
+  ["format", "Format", [
+    ["4k", "4K", (f) => f.badges.includes("4K")],
+    ["steel", "Steelbook", (f) => f.badges.includes("Steelbook")],
+    ["special", "Any special edition", (f) => !!f.edition],
+  ]],
+];
+
+export const filterTest = (filters, skipKey) => (f) =>
+  !f.tags.includes("sell") &&
+  FILTERS.every(([key, , opts]) => {
+    if (key === skipKey) return true;
+    const sel = filters[key];
+    if (!sel || sel === "any") return true;
+    const opt = opts.find((o) => o[0] === sel);
+    return !opt || opt[2](f);
+  });
+
+export const activeFilterLabels = (filters) =>
+  FILTERS.flatMap(([key, , opts]) => {
+    const opt = opts.find((o) => o[0] === filters[key]);
+    return opt ? [opt[1]] : [];
+  });
+
+// ─── Home shelves ───────────────────────────────────────────────────────
+const yearSub = (f) => f.year;
+
+const VIBES = [
+  ["asia", "Japan, Hong Kong & Korea", fromCountry("JP", "HK", "KR")],
+  ["yakuza", "Yakuza pictures", hasKw("yakuza")],
+  ["heist", "Heist night", hasKw("heist", "robbery", "bank robbery")],
+  ["hitmen", "Hitmen and assassins", hasKw("hitman", "assassin")],
+  ["paranoia", "Paranoia and conspiracy", hasKw("paranoia", "conspiracy")],
+  ["killers", "Serial killers", hasKw("serial killer")],
+  ["spies", "Spies", hasKw("spy", "espionage")],
+  ["dystopia", "Dystopias", hasKw("dystopia")],
+  ["revenge", "Revenge", hasKw("revenge")],
+  ["martial", "Martial arts", hasKw("martial arts", "kung fu")],
+  ["bw", "In black and white", hasKw("black and white")],
+  ["nyc", "New York stories", hasKw("new york city")],
+  ["la", "Los Angeles after dark", hasKw("los angeles, california")],
+  ["gangsters", "Gangsters", hasKw("gangster", "mafia")],
+  ["satire", "Satire", hasKw("satire")],
+  ["timetravel", "Time travel", hasKw("time travel")],
+  ["vampires", "Vampires", hasKw("vampire")],
+  ["horror", "Lights off: horror", hasGenre("Horror")],
+  ["scifi5", "Sci-fi you rated 5 stars", (f) => f.genres.includes("Science Fiction") && f.rating === 5],
+  ["comedy", "Comedy, for when it's been a week", hasGenre("Comedy")],
+  ["war", "War films", hasGenre("War")],
+  ["animation", "Animated", hasGenre("Animation")],
+  ["five", "Five stars, no notes", (f) => f.rating === 5],
+];
+
+export function buildRecipes(films) {
+  const out = [];
+  const add = (r) => {
+    const list = films.filter((f) => !f.tags.includes("sell") && r.test(f));
+    if (list.length >= (r.min || 6)) out.push({ sub: yearSub, kind: "vibe", ...r, films: list });
+  };
+
+  // People: directors with 4+ films, cinematographers and composers with 6+.
+  const count = (pick) => {
+    const m = new Map();
+    films.forEach((f) => pick(f).forEach((n) => m.set(n, (m.get(n) || 0) + 1)));
+    return m;
+  };
+  count((f) => f.directors.slice(0, 1)).forEach((n, name) => {
+    if (n >= 4) add({ id: "dir:" + name, kind: "person", title: name, min: 4, test: (f) => f.directors.includes(name) });
+  });
+  count((f) => f.dop).forEach((n, name) => {
+    if (n >= 6) add({ id: "dop:" + name, kind: "person", title: "Shot by " + name, test: (f) => f.dop.includes(name) });
+  });
+  count((f) => f.music).forEach((n, name) => {
+    if (n >= 6) add({ id: "mus:" + name, kind: "person", title: "Scored by " + name, test: (f) => f.music.includes(name) });
+  });
+
+  VIBES.forEach(([id, title, test]) => add({ id, title, test }));
+
+  [1960, 1970, 1980, 1990].forEach((d) =>
+    add({ id: "dec" + d, title: `The ${String(d).slice(2)}s, on your shelf`, test: (f) => f.yearNum >= d && f.yearNum < d + 10 }));
+  add({ id: "short", title: "Under 100 minutes", test: (f) => f.runtime && f.runtime < 100, sub: (f) => runtimeLabel(f.runtime) });
+  add({ id: "epic", title: "Clear the evening: 2½ hours+", test: (f) => f.runtime >= 150, sub: (f) => runtimeLabel(f.runtime) });
+  add({ id: "dusty", title: "Not watched in over 2 years", test: (f) => f.lastWatched && yearsSince(f.lastWatched) > 2, sub: (f) => "Last " + f.lastWatched.slice(0, 4) });
+  add({ id: "never", title: "On the shelf, never logged", test: (f) => !f.lastWatched });
+  add({ id: "editions", title: "Special editions", min: 4, test: (f) => !!f.edition, sub: (f) => f.badges[0] || "Special edition" });
+
+  // Seasonal shelves jump the queue in their month.
+  const month = new Date().getMonth();
+  if (month === 9) add({ id: "halloween", title: "Halloween season", seasonal: true, test: (f) => f.genres.includes("Horror") || f.keywords.includes("halloween") });
+  if (month === 11) add({ id: "christmas", title: "Set at Christmas", seasonal: true, min: 3, test: (f) => f.keywords.includes("christmas") });
+
+  return out;
+}
+
+// Deal four shelves: seasonal first, at most one "person" shelf, films shuffled within each.
+export function dealShelves(recipes, seed, count = 4) {
+  const rand = rng(seed);
+  const seasonal = recipes.filter((r) => r.seasonal);
+  const rest = shuffled(recipes.filter((r) => !r.seasonal), rand);
+  const picked = [...seasonal];
+  let people = 0;
+  for (const r of rest) {
+    if (picked.length >= count) break;
+    if (r.kind === "person") { if (people >= 1) continue; people++; }
+    picked.push(r);
+  }
+  return picked.slice(0, count).map((r) => ({ ...r, deal: shuffled(r.films, rand).slice(0, 15) }));
+}
