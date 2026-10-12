@@ -336,8 +336,11 @@ const reduceMotion = () => !!window.matchMedia?.("(prefers-reduced-motion: reduc
 // Where view transitions run, they own the film-page entrance; the CSS slide-in is only a fallback.
 // (Toggling it per transition replayed the slide-in the moment a transition ended: a visible jitter.)
 if (typeof document !== "undefined" && document.startViewTransition && !reduceMotion()) document.documentElement.dataset.vtOn = "";
+// Native-feeling navigation: tab switches, See all and filter changes are instant, the way iOS
+// apps behave. Film pages animate with the push below instead. Add a kind here to animate it again.
+const ANIMATED_KINDS = new Set();
 function transition(kind, update, after) {
-  if (!document.startViewTransition || reduceMotion()) { update(); after?.(); return; }
+  if (!ANIMATED_KINDS.has(kind) || !document.startViewTransition || reduceMotion()) { update(); after?.(); return; }
   const root = document.documentElement;
   root.dataset.vt = kind;
   let t;
@@ -1101,7 +1104,7 @@ function DirectorCard({ film, films, onOpen, onPerson }) {
 }
 
 // ─── FILM PAGE ──────────────────────────────────────────────────────────
-function FilmPage({ nav = "in", film, films, ix, onNight, onBuildAround, allTags, backLabel, onBack, onOpen, onPerson, onUpdate, onLog, onUnlog, onRemove, onPicker, onAddTag, onRemoveTag, onEditCopy, onEditDetails }) {
+function FilmPage({ nav = "in", below = false, film, films, ix, onNight, onBuildAround, allTags, backLabel, onBack, onOpen, onPerson, onUpdate, onLog, onUnlog, onRemove, onPicker, onAddTag, onRemoveTag, onEditCopy, onEditDetails }) {
   const [note, setNote] = useState(film.note);
   const [newTag, setNewTag] = useState(null);
   const [editTags, setEditTags] = useState(false);
@@ -1129,18 +1132,42 @@ function FilmPage({ nav = "in", film, films, ix, onNight, onBuildAround, allTags
   // the latest onBack through a ref: re-attaching them on every render (a photo loading, a sync check)
   // could drop a swipe midway and leave the page stuck half off screen.
   const onBackRef = useRef(onBack); onBackRef.current = onBack;
+  const [mountedBelow] = useState(below); // a page that appears underneath (going back two levels) shouldn't slide in
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    let sx = 0, sy = 0, t0 = 0, mode = null, dx = 0, leaving = false;
-    const set = (x, animate) => {
-      el.style.transition = animate ? "transform 0.25s cubic-bezier(.2,.9,.3,1), box-shadow 0.25s" : "none";
+    let sx = 0, sy = 0, t0 = 0, mode = null, dx = 0, leaving = false, uEl = null;
+    // The screen underneath (previous film page, or the tabs) slides back in step with your finger.
+    const under = () => {
+      const prev = el.previousElementSibling;
+      return prev && prev.classList.contains("film-page") ? prev : document.querySelector(".under");
+    };
+    const set = (x, animate, done) => {
+      const w = el.clientWidth || window.innerWidth;
+      const t = animate ? "0.3s cubic-bezier(.2,.9,.3,1)" : "0s";
+      el.style.transition = `transform ${t}`;
       el.style.transform = x ? `translateX(${x}px)` : "";
-      el.style.boxShadow = x ? "-12px 0 32px rgba(0,0,0,0.5)" : "";
+      // Remember what was underneath when the swipe began: once this page is gone it has no sibling to ask.
+      const u = uEl || (uEl = under());
+      if (!u) return;
+      const dim = u.classList.contains("under") ? document.querySelector(".nav-dim") : null;
+      const parts = [u, dim].filter(Boolean);
+      if (done === "reset" || (x === 0 && !done)) {
+        parts.forEach((p) => { p.style.transition = done === "reset" ? "" : `transform ${t}, filter ${t}, opacity ${t}`; p.style.transform = ""; p.style.filter = ""; p.style.opacity = ""; });
+        if (done === "reset") uEl = null;
+        else setTimeout(() => parts.forEach((p) => { p.style.transition = ""; }), 320);
+        return;
+      }
+      const k = Math.min(1, x / w);
+      parts.forEach((p) => { p.style.transition = `transform ${t}, filter ${t}, opacity ${t}`; });
+      u.style.transform = `translateX(${-28 * (1 - k)}%)`;
+      if (dim) dim.style.opacity = String(1 - k);
+      else u.style.filter = `brightness(${0.7 + 0.3 * k})`;
     };
     const start = (e) => {
       if (e.touches.length !== 1 || e.target.closest(".shelf-row, input, textarea, select, .scrim")) { mode = "off"; return; }
       sx = e.touches[0].clientX; sy = e.touches[0].clientY; t0 = Date.now(); mode = null; dx = 0;
+      if (!leaving) uEl = null;
     };
     const move = (e) => {
       if (mode === "off" || mode === "v") return;
@@ -1165,8 +1192,8 @@ function FilmPage({ nav = "in", film, films, ix, onNight, onBuildAround, allTags
       const fast = dx / Math.max(1, Date.now() - t0) > 0.5 && dx > 40;
       if (dx > w * 0.33 || fast) {
         leaving = true;
-        set(w, true);
-        setTimeout(() => { set(0, false); leaving = false; onBackRef.current({ swiped: true }); }, 220);
+        set(w, true, "finish");
+        setTimeout(() => { el.style.transition = "none"; onBackRef.current({ swiped: true }); setTimeout(() => set(0, false, "reset"), 30); }, 260);
       } else set(0, true);
     };
     el.addEventListener("touchstart", start, { passive: true });
@@ -1198,7 +1225,7 @@ function FilmPage({ nav = "in", film, films, ix, onNight, onBuildAround, allTags
   const toggleTag = (t) => onUpdate(film.key, { tags: film.tags.includes(t) ? film.tags.filter((x) => x !== t) : [...film.tags, t] });
 
   return (
-    <div className={"film-page" + (nav === "leaving" ? " leaving" : nav === "back" ? " back-in" : "")} ref={ref} role="dialog" aria-label={film.name}>
+    <div className={"film-page" + (nav === "leaving" ? " leaving" : "") + (below ? " below" : "") + (mountedBelow ? " still" : "")} ref={ref} role="dialog" aria-label={film.name} aria-hidden={below || undefined}>
       <div className="film-inner">
         <div className="film-hero">
           {film.posterPath && <img className="banner-blur" src={img(film.posterPath, "w92")} alt="" aria-hidden="true" />}
@@ -2419,25 +2446,36 @@ export default function App() {
   // Film pages use a plain iOS-style push: the page slides in the instant you tap (no screen snapshot
   // to wait for, unlike a view transition) and slides back out to the right.
   const [leaving, setLeaving] = useState(false);
-  const navDir = useRef("in");
+  // The tabs sit "under" the stack: pushed a third of the way left and dimmed while any film is open.
+  const covered = stack.length > 1 || (stack.length === 1 && !leaving);
   const openFilm = (f) => {
-    navDir.current = "in";
     setLeaving(false);
     setStack((s) => (s[s.length - 1] === f.key ? s : [...s, f.key]));
   };
   const back = (opts) => {
     if (!stack.length || leaving) return;
-    const pop = () => { navDir.current = "back"; setStack((s) => s.slice(0, -1)); setLeaving(false); };
+    const pop = () => { setStack((s) => s.slice(0, -1)); setLeaving(false); };
     if (opts?.swiped || reduceMotion()) return pop();
     setLeaving(true);
-    setTimeout(pop, 260);
+    setTimeout(pop, 330);
   };
   // Each tab remembers how far down you were, like iOS tab bars.
   const tabScroll = useRef({});
   const goTab = (t) => {
-    if (t === tab) { setStack([]); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
+    if (t === tab) {
+      // Tapping the tab you're on pops straight back to its root, animated like iOS; tap again to scroll up.
+      if (stack.length) {
+        if (leaving) return;
+        setStack((s) => s.slice(-1)); setLeaving(true);
+        setTimeout(() => { setStack([]); setLeaving(false); }, reduceMotion() ? 0 : 330);
+      } else window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
     tabScroll.current[tab] = stack.length ? lockedY : window.scrollY;
     forgetScroll();
+    // Switching tabs is instant, even with a film open: no slide back underneath.
+    document.querySelectorAll(".under, .nav-dim").forEach((e) => { e.style.transition = "none"; });
+    requestAnimationFrame(() => requestAnimationFrame(() => document.querySelectorAll(".under, .nav-dim").forEach((e) => { e.style.transition = ""; })));
     transition("tab", () => { setStack([]); setTab(t); }, () => window.scrollTo(0, tabScroll.current[t] || 0));
   };
   // From a Home shelf's "See all": the shelf's visible posters fly to their spots in the Library
@@ -2481,6 +2519,9 @@ export default function App() {
 
   return (
     <div className="app">
+      {/* Everything under the film pages. It slides a third of the way left and dims while a film page
+          is on top, like an iOS navigation stack, and glides back when you go back. */}
+      <div className={"under" + (covered ? " covered" : "")}>
       <main hidden={tab !== "home"}>
         <HomeTab films={films} defs={defs} recipes={recipes} filters={filters} home={home} setHome={setHome} active={tab === "home"}
           onOpen={openFilmE} onSeeAll={onSeeAllE} onSearch={onSearchE} onFilters={onFiltersE} onPair={setNight} onDoubles={onDoublesE} />
@@ -2488,19 +2529,28 @@ export default function App() {
       {/* Tabs stay built in the background, so switching back is instant and keeps your place. */}
       <main hidden={tab !== "library"}><LibraryTab films={films} customTags={D.customTags} extra={extra} setExtra={setExtra} onOpen={openFilmE} onAdd={onAddE} onSettings={onSettingsE} searchFocus={searchFocus} onFocused={onFocusedE} /></main>
       <main hidden={tab !== "stats"}><StatsTab films={films} onPerson={onPersonE} onLabel={onLabelE} /></main>
-      {(tab === "library" || tab === "doubles" || tab === "stats") && !top && <BackToTop key={tab} />}
       <main hidden={tab !== "doubles"}><DoublesTab films={films} ix={ix} programs={D.programs} view={dblView} setView={setDblView} anchor={anchor} setAnchor={setAnchor} onNight={setNight} finish={finish} /></main>
+      </div>
+      <div className={"nav-dim" + (covered ? " on" : "")} aria-hidden="true" />
+      {(tab === "library" || tab === "doubles" || tab === "stats") && !top && <BackToTop key={tab} />}
 
-      {top && (
-        <FilmPage key={top.key} nav={leaving ? "leaving" : navDir.current} film={top} films={films} ix={ix} onNight={setNight} onBuildAround={buildAround} allTags={allTags} onAddTag={D.addTag} onRemoveTag={D.removeTag}
-          onEditCopy={(c) => setCopyEdit({ key: top.key, copy: c })} onEditDetails={() => setDetailsFor(top.key)} backLabel={backLabel} onBack={back} onOpen={openFilm} onPerson={onPerson}
-          onUpdate={D.updateFilm} onLog={(k, date, rating) => { D.logWatch(k, date, rating); if (rating !== undefined) D.updateFilm(k, { rating }); }} onUnlog={D.unlogWatch} onRemove={D.removeFilm} onPicker={(t) => setPicking({ key: top.key, tab: t })} />
-      )}
+      {stack.slice(-2).map((k, i, arr) => {
+        const f = byKey.get(k);
+        if (!f) return null;
+        const isTop = i === arr.length - 1;
+        const depth = stack.length - arr.length + i; // position in the whole stack
+        const label = depth > 0 ? (byKey.get(stack[depth - 1])?.name || "Back") : TAB_NAMES[tab];
+        return (
+          <FilmPage key={k} nav={isTop ? (leaving ? "leaving" : "in") : "in"} below={!isTop && !leaving} film={f} films={films} ix={ix} onNight={setNight} onBuildAround={buildAround} allTags={allTags} onAddTag={D.addTag} onRemoveTag={D.removeTag}
+            onEditCopy={(c) => setCopyEdit({ key: f.key, copy: c })} onEditDetails={() => setDetailsFor(f.key)} backLabel={label} onBack={back} onOpen={openFilm} onPerson={onPerson}
+            onUpdate={D.updateFilm} onLog={(key, date, rating) => { D.logWatch(key, date, rating); if (rating !== undefined) D.updateFilm(key, { rating }); }} onUnlog={D.unlogWatch} onRemove={D.removeFilm} onPicker={(t) => setPicking({ key: f.key, tab: t })} />
+        );
+      })}
 
       <nav className="tabbar" aria-label="Sections">
         <div className="tabbar-inner">
           {TABS.map(([k, l, ic]) => (
-            <button key={k} className={"tab" + (tab === k && !top ? " on" : "")} aria-current={tab === k ? "page" : undefined} onClick={() => goTab(k)}>
+            <button key={k} className={"tab" + (tab === k ? " on" : "")} aria-current={tab === k ? "page" : undefined} onClick={() => goTab(k)}>
               <Icon d={ic} size={26} sw={tab === k ? 2 : 1.7} />{l}
             </button>
           ))}

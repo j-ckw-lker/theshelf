@@ -160,11 +160,20 @@ img { display: block; }
 .density button.on i { background: var(--accent); }
 
 /* ── Film page ────────────────────────────────────────────── */
-.film-page { position: fixed; z-index: 40; inset: 0 0 var(--tabbar) 0; overflow-y: auto; background: var(--bg); animation: push-in 0.38s cubic-bezier(.2, .9, .3, 1); overscroll-behavior: contain; box-shadow: -14px 0 36px rgba(0, 0, 0, 0.45); }
-.film-page.back-in { animation: fade-in 0.2s ease; }
-.film-page.leaving { animation: push-out 0.27s cubic-bezier(.4, 0, .7, 1) forwards; pointer-events: none; }
+.film-page { position: fixed; z-index: 40; inset: 0 0 var(--tabbar) 0; overflow-y: auto; background: var(--bg); animation: push-in 0.38s cubic-bezier(.2, .9, .3, 1); overscroll-behavior: contain; box-shadow: -14px 0 36px rgba(0, 0, 0, 0.45);
+  transition: transform 0.36s cubic-bezier(.2, .9, .3, 1), filter 0.36s cubic-bezier(.2, .9, .3, 1); }
+.film-page.still { animation: none; }
+/* A film with another film pushed on top of it: parked a third of the way left, dimmed, like iOS. */
+.film-page.below { transform: translateX(-28%); filter: brightness(0.7); pointer-events: none; }
+.film-page.leaving { animation: push-out 0.32s cubic-bezier(.2, .9, .3, 1) forwards; pointer-events: none; }
 @keyframes push-in { from { transform: translateX(100%); } to { transform: none; } }
 @keyframes push-out { from { transform: none; } to { transform: translateX(100%); } }
+/* The tabs under the stack slide and dim the same way. */
+.under { transition: transform 0.36s cubic-bezier(.2, .9, .3, 1); }
+.under.covered { transform: translateX(-28%); }
+.nav-dim { position: fixed; z-index: 39; inset: 0 0 var(--tabbar) 0; background: rgba(0, 0, 0, 0.32); opacity: 0; pointer-events: none; transition: opacity 0.36s cubic-bezier(.2, .9, .3, 1); }
+.nav-dim.on { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .under, .nav-dim, .film-page { transition: none; } .film-page { animation: none; } }
 @keyframes fade-in { from { opacity: 0; } }
 .film-inner { max-width: 560px; margin: 0 auto; padding-bottom: 32px; }
 .film-hero { position: relative; height: calc(var(--top) + 230px); overflow: hidden; background: var(--bg-2); }
@@ -372,11 +381,8 @@ input[type="date"].field::-webkit-date-and-time-value { text-align: left; }
 
 /* ─── Motion ─── */
 .tabbar { view-transition-name: tabbar; }
-.film-head .poster { view-transition-name: film-poster; }
 ::view-transition-group(film-poster) { animation-duration: 0.5s; animation-timing-function: cubic-bezier(.2, .9, .3, 1); }
 ::view-transition-old(film-poster), ::view-transition-new(film-poster) { height: 100%; width: 100%; object-fit: cover; border-radius: 4px; }
-/* Film pages move on their own layer; the screen underneath (Library, Home) stays perfectly still. */
-.film-page { view-transition-name: film-page; }
 html[data-vt="morph"]::view-transition-old(root), html[data-vt="morph"]::view-transition-new(root),
 html[data-vt="push"]::view-transition-old(root), html[data-vt="push"]::view-transition-new(root),
 html[data-vt="pop"]::view-transition-old(root), html[data-vt="pop"]::view-transition-new(root) { animation: none; }
