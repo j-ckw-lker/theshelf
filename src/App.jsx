@@ -10,7 +10,7 @@ import {
 } from "./lib.js";
 import { TAGS, THEMES, makeFilters, filterTest, activeFilterLabels, buildRecipes, dealShelves } from "./shelves.js";
 import { pairIndex, bestPairs, partnersFor, scorePair, nightPlan, reasonLine } from "./pairs.js";
-import { flushSync } from "react-dom";
+import { flushSync, createPortal } from "react-dom";
 import "./styles.css";
 
 // ════════════════════════════════════════════════════════════════════════
@@ -30,6 +30,9 @@ function useStored(key, initial) {
   }, [key]);
   return [value, save];
 }
+
+// Watch log: per film, a list of { date, rating? }. Older saves stored a single date string.
+const entriesOf = (v) => (Array.isArray(v) ? v : v ? [{ date: v }] : []);
 
 function useData() {
   const [userData, setUserData] = useStored("shelf-userdata", {});
@@ -53,8 +56,15 @@ function useData() {
     addFilm: (f) => setAdded((a) => [...a, { addedAt: todayISO(), ...f, userAdded: true }]),
     patchAdded: (k, patch) => setAdded((a) => a.map((f) => (fkey(f) === k ? { ...f, ...patch } : f))),
     removeFilm: (k) => setAdded((a) => a.filter((f) => fkey(f) !== k)),
-    logWatch: (k) => setWatchLog((w) => ({ ...w, [k]: todayISO() })),
-    unlogWatch: (k) => setWatchLog((w) => { const { [k]: _, ...rest } = w; return rest; }),
+    logWatch: (k, date = todayISO(), rating) => setWatchLog((w) => ({
+      ...w,
+      [k]: [...entriesOf(w[k]).filter((e) => e.date !== date), { date, ...(rating != null ? { rating } : {}) }].sort((a, b) => a.date.localeCompare(b.date)),
+    })),
+    unlogWatch: (k, date) => setWatchLog((w) => {
+      const left = date ? entriesOf(w[k]).filter((e) => e.date !== date) : [];
+      const { [k]: _, ...rest } = w;
+      return left.length ? { ...rest, [k]: left } : rest;
+    }),
     setWant,
     importAll: (p) => {
       if (p.userData) setUserData(p.userData);
@@ -74,9 +84,11 @@ function deriveFilm(raw, userData, watchLog) {
   const f = u.match ? { ...raw, ...u.match } : raw; // "Fix the match" swaps in another film's TMDB data
   const copies = (u.copies || parseEdition(f.edition || "").map((c, i) => ({ ...c, id: "s" + i })))
     .map((c) => (c.label ? { ...c, label: canonicalLabel(c.label) } : c));
-  const logged = watchLog[key];
+  const diary = entriesOf(watchLog[key]);
+  const logged = diary.length ? diary[diary.length - 1].date : null;
   const views = f.views ? f.views.slice() : [];
-  if (logged && !views.includes(logged)) views.push(logged);
+  diary.forEach((e) => { if (!views.includes(e.date)) views.push(e.date); });
+  views.sort();
   const lastWatched = [logged, f.lastWatched, views[views.length - 1]].filter(Boolean).sort().pop() || null;
   const sk = sortKey(f.name);
   const out = {
@@ -103,7 +115,7 @@ function deriveFilm(raw, userData, watchLog) {
     addedOn: copies.map((c) => c.purchased).filter(Boolean).sort()[0] || f.addedAt || f.added || null,
     addedSince: f.addedSince || null,
     special: copies.some((c) => (c.package && c.package !== "Standard") || c.label),
-    views, lastWatched,
+    views, lastWatched, diary,
     yearNum: parseInt(f.year) || 0,
     recency: f.userAdded ? 1e6 + (Date.parse(f.addedAt || "2026-10-11") / 864e5) : (f.added || 0),
     get addedKey() { return this.addedOn || this.addedSince || ""; },
@@ -263,7 +275,8 @@ function Sheet({ title, onClose, left, right, tall, children, foot, sub }) {
       el.removeEventListener("touchcancel", end);
     };
   }, [onClose]);
-  return (
+  // Rendered at the top of the page, so a sheet opened from inside a film page still covers the tab bar.
+  return createPortal(
     <div className={"scrim" + (leaving ? " leaving" : "")} onClick={close}>
       <div ref={sheetRef} className={"sheet" + (tall ? " tall" : "") + (leaving ? " leaving" : "")} role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
         <div className="sheet-head">
@@ -278,7 +291,8 @@ function Sheet({ title, onClose, left, right, tall, children, foot, sub }) {
         <div className="sheet-body">{children}</div>
         {foot && <div className="sheet-foot">{foot}</div>}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -934,6 +948,7 @@ function FilmPage({ film, films, ix, onNight, onBuildAround, allTags, backLabel,
   const [newTag, setNewTag] = useState(null);
   const [editTags, setEditTags] = useState(false);
   const [editThemes, setEditThemes] = useState(false);
+  const [logging, setLogging] = useState(false);
   // Turning a theme on/off undoes an earlier correction first, so a film can always go back to TMDB's answer.
   const toggleTheme = (id) => {
     const u = { add: film.themesAdd || [], off: film.themesOff || [] };
@@ -1039,8 +1054,8 @@ function FilmPage({ film, films, ix, onNight, onBuildAround, allTags, backLabel,
 
         <div className="film-body">
           <div className="btn-row">
-            <button className={"btn " + (loggedToday ? "btn-done" : "btn-primary")} onClick={() => (loggedToday ? onUnlog(film.key) : onLog(film.key))} aria-pressed={loggedToday}>
-              {loggedToday ? <><Icon d={I.check} size={16} sw={2.6} />Watched today</> : "Watched today"}
+            <button className={"btn " + (loggedToday ? "btn-done" : "btn-primary")} onClick={() => setLogging(true)}>
+              {loggedToday ? <><Icon d={I.check} size={16} sw={2.6} />Watched today</> : "Log a watch"}
             </button>
             <button className="btn btn-outline" onClick={() => onPicker("poster")} disabled={!film.tmdb}>Poster & banner</button>
           </div>
@@ -1166,7 +1181,76 @@ function FilmPage({ film, films, ix, onNight, onBuildAround, allTags, backLabel,
           </div>
         </div>
       </div>
+      {logging && <LogSheet film={film} onLog={onLog} onUnlog={onUnlog} onClose={() => setLogging(false)} />}
     </div>
+  );
+}
+
+// ─── LOG A WATCH ────────────────────────────────────────────────────────
+// Half-star rating: each star is two tap targets (left half, right half).
+function StarPicker({ value, onChange }) {
+  const star = <path d="M12 2.8l2.75 5.9 6.45.75-4.78 4.4 1.3 6.37L12 17.02 6.28 20.2l1.3-6.37L2.8 9.45l6.45-.75Z" />;
+  return (
+    <div className="stars-pick" role="group" aria-label="Rating">
+      {[1, 2, 3, 4, 5].map((n) => {
+        const fill = value == null ? 0 : Math.max(0, Math.min(1, value - (n - 1)));
+        return (
+          <span key={n} className="star-cell">
+            <svg viewBox="0 0 24 24" className="star-bg" aria-hidden="true">{star}</svg>
+            <svg viewBox="0 0 24 24" className="star-fg" aria-hidden="true" style={{ clipPath: `inset(0 ${100 - fill * 100}% 0 0)` }}>{star}</svg>
+            {[n - 0.5, n].map((v, i) => (
+              <button key={v} className={"star-hit " + (i ? "r" : "l")} aria-label={`${v} stars`} aria-pressed={value === v}
+                onClick={() => onChange(value === v ? null : v)} />
+            ))}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function LogSheet({ film, onLog, onUnlog, onClose }) {
+  const today = todayISO();
+  const yesterday = new Date(Date.now() - 864e5).toLocaleDateString("en-CA");
+  const [date, setDate] = useState(today);
+  const [rating, setRating] = useState(film.rating ?? null);
+  const watched = film.diary.slice().reverse();
+  const already = film.diary.some((e) => e.date === date);
+  return (
+    <Sheet title="Log a watch" onClose={onClose} left={<button className="left" onClick={onClose}>Cancel</button>} right={<span />}
+      foot={<button className="btn btn-primary" onClick={() => { onLog(film.key, date, rating); onClose(); }}>{already ? "Update this watch" : "Log watch"}</button>}>
+      <div className="muted" style={{ fontSize: 14, marginTop: -4 }}>{film.name} ({film.year})</div>
+      <section className="stat-section" style={{ gap: 8 }}>
+        <span className="field-label" style={{ margin: 0 }}>Watched on</span>
+        <div className="tag-row">
+          <button className={"chip" + (date === today ? " on" : "")} onClick={() => setDate(today)}>Today</button>
+          <button className={"chip" + (date === yesterday ? " on" : "")} onClick={() => setDate(yesterday)}>Yesterday</button>
+          <label className={"chip date-chip" + (date !== today && date !== yesterday ? " on" : "")}>
+            {date !== today && date !== yesterday ? fmtDate(date) : "Pick a date"}
+            <input type="date" value={date} max={today} onChange={(e) => e.target.value && setDate(e.target.value)} aria-label="Pick a date" />
+          </label>
+        </div>
+      </section>
+      <section className="stat-section" style={{ gap: 8 }}>
+        <div className="stat-head">
+          <span className="field-label" style={{ margin: 0 }}>Rating</span>
+          <span className="muted tnum" style={{ fontSize: 13 }}>{rating == null ? "Not rated" : rating + " / 5"}</span>
+        </div>
+        <StarPicker value={rating} onChange={setRating} />
+        <span className="muted" style={{ fontSize: 12 }}>Tap the left or right side of a star for halves. Tap your rating again to clear it. This becomes the film's rating in the app.</span>
+      </section>
+      {watched.length > 0 && (
+        <section className="stat-section" style={{ gap: 0 }}>
+          <span className="field-label">Logged here</span>
+          {watched.map((e) => (
+            <div key={e.date} className="list-row">
+              <span className="grow tnum">{fmtDate(e.date)}{e.rating != null && <span className="accent"> · {stars(e.rating)}</span>}</span>
+              <button style={{ fontSize: 14, color: "var(--danger)" }} onClick={() => onUnlog(film.key, e.date)}>Remove</button>
+            </div>
+          ))}
+        </section>
+      )}
+    </Sheet>
   );
 }
 
@@ -1936,7 +2020,7 @@ function Backup({ D, films, onBuy, bare }) {
         {row("Tagged", Object.values(D.userData).filter((u) => u.tags && u.tags.length).length)}
         {row("Custom posters", Object.values(D.userData).filter((u) => u.poster).length)}
         {row("Films with copy details", Object.values(D.userData).filter((u) => u.copies && u.copies.length).length)}
-        {row("Watches logged here", Object.keys(D.watchLog).length)}
+        {row("Watches logged here", Object.values(D.watchLog).reduce((n, v) => n + entriesOf(v).length, 0))}
         {row("Double features saved", D.programs.length)}
       </section>
 
@@ -2143,7 +2227,7 @@ export default function App() {
       {top && (
         <FilmPage key="film" film={top} films={films} ix={ix} onNight={setNight} onBuildAround={buildAround} allTags={allTags} onAddTag={D.addTag} onRemoveTag={D.removeTag}
           onEditCopy={(c) => setCopyEdit({ key: top.key, copy: c })} onEditDetails={() => setDetailsFor(top.key)} backLabel={backLabel} onBack={back} onOpen={openFilm} onPerson={onPerson}
-          onUpdate={D.updateFilm} onLog={D.logWatch} onUnlog={D.unlogWatch} onRemove={D.removeFilm} onPicker={(t) => setPicking({ key: top.key, tab: t })} />
+          onUpdate={D.updateFilm} onLog={(k, date, rating) => { D.logWatch(k, date, rating); if (rating !== undefined) D.updateFilm(k, { rating }); }} onUnlog={D.unlogWatch} onRemove={D.removeFilm} onPicker={(t) => setPicking({ key: top.key, tab: t })} />
       )}
 
       <nav className="tabbar" aria-label="Sections">

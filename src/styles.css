@@ -428,3 +428,14 @@ html[data-vt="reflow"]::view-transition-old(root), html[data-vt="reflow"]::view-
 .director-bio { margin: 0; font-size: 14px; line-height: 1.5; color: var(--label-2); cursor: pointer; }
 .sheet-head { touch-action: none; }
 .sheet-head .fjump { touch-action: pan-x; }
+
+/* Log a watch */
+.stars-pick { display: flex; gap: 6px; }
+.star-cell { position: relative; width: 44px; height: 44px; }
+.star-cell svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.star-bg { fill: var(--fill-strong); }
+.star-fg { fill: var(--accent); }
+.star-hit { position: absolute; top: 0; bottom: 0; width: 50%; }
+.star-hit.l { left: 0; } .star-hit.r { right: 0; }
+.date-chip { position: relative; overflow: hidden; }
+.date-chip input { position: absolute; inset: 0; opacity: 0; width: 100%; font-size: 16px; }
