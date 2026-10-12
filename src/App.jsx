@@ -168,7 +168,7 @@ function useSync(D) {
         if (r.conflict) throw new Error("Changes are arriving from another device. Tap Sync now.");
         adopt(merged, { version: r.version, at: r.updatedAt });
       } else saveMeta({ version: r.version, at: r.updatedAt, synced: sentJson });
-      setStatus({ state: "ok", at: r.updatedAt });
+      setStatus({ state: "ok", at: r.updatedAt, checked: Date.now() });
     } catch (e) { setStatus((s) => ({ ...s, state: "error", error: e.message })); }
     busy.current = false;
   };
@@ -179,13 +179,13 @@ function useSync(D) {
     try {
       const { doc } = await api("GET");
       busy.current = false;
-      if (!doc) { if (hasPersonal(payloadRef.current)) { saveMeta({ version: null, synced: null }); return push(); } return setStatus({ state: "ok", at: Date.now() }); }
+      if (!doc) { if (hasPersonal(payloadRef.current)) { saveMeta({ version: null, synced: null }); return push(); } return setStatus({ state: "ok", at: Date.now(), checked: Date.now() }); }
       if (doc.version !== meta.current.version) {
         const dirty = jsonRef.current !== meta.current.synced;
         if (!dirty) adopt(doc.data, { version: doc.version, at: doc.updatedAt });
         else { D.importAll(mergeDocs(doc.data, payloadRef.current)); saveMeta({ version: doc.version }); } // the change effect saves the merge
       }
-      setStatus({ state: "ok", at: doc.updatedAt });
+      setStatus({ state: "ok", at: doc.updatedAt, checked: Date.now() });
     } catch (e) { busy.current = false; setStatus((s) => ({ ...s, state: "error", error: e.message })); }
   };
 
@@ -2648,6 +2648,9 @@ const ago = (t) => {
 function SyncPanel({ sync }) {
   const [pass, setPass] = useState("");
   const st = sync.status;
+  // Keep "x min ago" honest while the sheet stays open.
+  const [, tick] = useState(0);
+  useEffect(() => { const id = setInterval(() => tick((n) => n + 1), 30000); return () => clearInterval(id); }, []);
   if (st.state === "choose") {
     return (
       <section className="stat-section sync">
@@ -2675,7 +2678,9 @@ function SyncPanel({ sync }) {
       </section>
     );
   }
-  const label = st.state === "syncing" ? "Syncing…" : st.state === "error" ? "Not synced" : st.restored ? "Restored from the cloud " + ago(st.at) : st.at ? "Synced " + ago(st.at) : "On";
+  // "Synced" is when this phone last confirmed it matches the cloud (a Sync now, opening the app, a save).
+  // When the cloud copy itself last changed is a separate, smaller line.
+  const label = st.state === "syncing" ? "Syncing…" : st.state === "error" ? "Not synced" : st.restored ? "Restored from the cloud " + ago(st.checked || st.at) : st.checked || st.at ? "Synced " + ago(st.checked || st.at) : "On";
   return (
     <section className="stat-section sync">
       <div className="stat-head">
@@ -2683,7 +2688,7 @@ function SyncPanel({ sync }) {
         <span className={"sync-dot " + (st.state === "error" ? "bad" : st.state === "syncing" ? "busy" : "ok")}>{label}</span>
       </div>
       {st.state === "error" && <p className="sync-error">{st.error}</p>}
-      <p className="muted sync-note">Changes save to the cloud a moment after you make them, and the app checks for newer copies whenever you open it.</p>
+      <p className="muted sync-note">Changes save to the cloud a moment after you make them, and the app checks for newer copies whenever you open it.{st.at && st.checked && st.state === "ok" ? ` Last change saved ${ago(st.at)}.` : ""}</p>
       <div style={{ display: "flex", gap: 22 }}>
         <button className="link" onClick={sync.syncNow}>Sync now</button>
         <button className="link" style={{ color: "var(--label-2)" }} onClick={sync.disconnect}>Turn off on this device</button>
@@ -2746,7 +2751,9 @@ function Backup({ D, sync, films, onBuy, bare }) {
           <button className="btn btn-outline" style={{ height: 46 }} onClick={() => fileRef.current.click()}>Restore from backup</button>
         </div>
         <input ref={fileRef} type="file" accept="application/json,.json" onChange={doImport} style={{ display: "none" }} />
-        <span className="muted" style={{ fontSize: 13, lineHeight: 1.45 }}>{msg || "Tags, notes, poster choices, double features, films added here, the wishlist and watch log live only on this device. Export now and then, and always before clearing Safari."}</span>
+        <span className="muted" style={{ fontSize: 13, lineHeight: 1.45 }}>{msg || (sync?.on
+          ? "Sync keeps all of this in the cloud. An exported file is an extra copy you hold yourself."
+          : "Tags, notes, poster choices, double features, films added here, the wishlist and watch log live only on this device. Export now and then, and always before clearing Safari.")}</span>
       </section>
 
       <section className="stat-section" style={{ gap: 0 }}>
