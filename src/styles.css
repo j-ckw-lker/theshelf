@@ -454,12 +454,12 @@ html[data-vt="reflow"]::view-transition-old(root), html[data-vt="reflow"]::view-
 .dir-name { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .dir-name strong { font-family: var(--font-display); font-size: 22px; line-height: 1.15; font-weight: 700; color: var(--label); letter-spacing: 0.1px; }
 .dir-name .muted { font-size: 13px; }
-.dir-strip b { font-size: 20px; }
-.dir-strip b small { font-size: 13px; font-weight: 500; color: var(--label-2); }
-.dir-strip > div:first-child b { color: var(--accent-text); }
 .director-bio { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .director-bio.open { display: block; }
-.dir-sub { margin-top: 4px; }
+.dir-sub { margin-top: 4px; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.dir-sub .muted { font-size: 12px; }
+.dir-films .missing .poster { filter: grayscale(1) brightness(0.8); opacity: 0.35; }
+.dir-films .missing span { color: var(--label-3, rgba(246, 244, 240, 0.35)); }
 .dir-films { margin: 0 -20px; }
 .dir-films .here .poster { box-shadow: 0 0 0 2px var(--accent); }
 .dir-films .here em { font-style: normal; color: var(--accent-text); }

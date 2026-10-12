@@ -1026,20 +1026,26 @@ function LibraryFilter({ films, groups, sel, active, onToggle, onReset, onClose 
 // Photo, dates and a short bio from TMDB (looked up once per person, then kept on the device),
 // plus what your own shelf says about them.
 const peopleCache = readJSON("shelf-people", {});
+const PEOPLE_V = 2; // bump to refetch cached people (v2 added their filmography)
 function useDirector(film) {
   const name = film.directors[0];
   const [info, setInfo] = useState(() => peopleCache[name] || null);
   useEffect(() => {
     setInfo(peopleCache[name] || null);
-    if (peopleCache[name] || !film.tmdb || film.tmdbType === "tv") return;
+    if (peopleCache[name]?.v === PEOPLE_V || !film.tmdb || film.tmdbType === "tv") return;
     let dead = false;
     (async () => {
       try {
         const m = await tmdb(`/movie/${film.tmdb}`, { append_to_response: "credits" });
         const crew = (m.credits?.crew || []).find((c) => c.job === "Director" && c.name === name) || (m.credits?.crew || []).find((c) => c.job === "Director");
         if (!crew) return;
-        const p = await tmdb(`/person/${crew.id}`);
-        const out = { id: crew.id, photo: p.profile_path || crew.profile_path || null, born: p.birthday || null, died: p.deathday || null, place: p.place_of_birth || null, bio: (p.biography || "").trim() };
+        const p = await tmdb(`/person/${crew.id}`, { append_to_response: "movie_credits" });
+        // Everything they directed that's actually out, skipping the obscure shorts and student films.
+        const today = todayISO(), ids = new Set();
+        const films = (p.movie_credits?.crew || [])
+          .filter((c) => c.job === "Director" && c.release_date && c.release_date <= today && (c.vote_count || 0) >= 20 && !ids.has(c.id) && ids.add(c.id))
+          .map((c) => ({ id: c.id, title: c.title, year: c.release_date.slice(0, 4), poster: c.poster_path || null }));
+        const out = { v: PEOPLE_V, id: crew.id, photo: p.profile_path || crew.profile_path || null, born: p.birthday || null, died: p.deathday || null, place: p.place_of_birth || null, bio: (p.biography || "").trim(), films };
         peopleCache[name] = out;
         store.set("shelf-people", JSON.stringify(peopleCache));
         if (!dead) setInfo(out);
@@ -1050,27 +1056,30 @@ function useDirector(film) {
   return info;
 }
 
-function DirectorCard({ film, films, onOpen, onPerson }) {
+function DirectorCard({ film, films, onOpen, onPerson, onAdd }) {
   const name = film.directors[0];
   const info = useDirector(film);
   const [open, setOpen] = useState(false);
   useEffect(() => setOpen(false), [film.key]);
-  const theirs = films.filter((f) => f.directors.includes(name)).sort((a, b) => a.yearNum - b.yearNum || a.sortKey.localeCompare(b.sortKey));
-  const rated = theirs.filter((f) => f.rating != null);
-  const avg = rated.length ? rated.reduce((n, f) => n + f.rating, 0) / rated.length : null;
-  const seen = theirs.filter((f) => f.lastWatched).length;
-  const rank = META.rankedDirectors.findIndex((d) => d.name === name);
+  const theirs = films.filter((f) => f.directors.includes(name));
+  // Their whole filmography in order: what you own, plus everything else greyed out.
+  const strip = useMemo(() => {
+    const owned = new Set(theirs.map((f) => Number(f.tmdb)).filter(Boolean));
+    const missing = (info?.films || []).filter((m) => !owned.has(m.id))
+      .map((m) => ({ key: "tmdb:" + m.id, missing: true, name: m.title, year: m.year, yearNum: +m.year, posterPath: m.poster, sortKey: m.title.toLowerCase() }));
+    return [...theirs, ...missing].sort((a, b) => a.yearNum - b.yearNum || a.sortKey.localeCompare(b.sortKey));
+  }, [films, name, info]);
   const year = (d) => (d ? d.slice(0, 4) : null);
   const dates = info?.born ? (info.died ? `${year(info.born)}–${year(info.died)}` : `Born ${year(info.born)}`) : null;
   const place = info?.place ? info.place.split(",").map((x) => x.trim()).slice(0, 2).join(", ") : null;
   const [photoFailed, setPhotoFailed] = useState(false);
   const bio = info?.bio || "";
-  // The filmography strip opens with this film in view, so you see where it sits in their career.
+  // The strip opens with this film in view, so you see where it sits in their career.
   const row = useRef(null);
   useLayoutEffect(() => {
     const r = row.current, cur = r?.querySelector(".here");
     if (r && cur) r.scrollLeft = Math.max(0, cur.offsetLeft - r.clientWidth / 2 + cur.clientWidth / 2);
-  }, [film.key, theirs.length]);
+  }, [film.key, strip.length]);
   return (
     <section className="director">
       <div className="section-label caps">{film.directors.length > 1 ? "Directors" : "Director"}</div>
@@ -1084,23 +1093,26 @@ function DirectorCard({ film, films, onOpen, onPerson }) {
         </span>
         <Icon d={I.chev} size={16} sw={2.4} />
       </button>
-      <div className="strip dir-strip">
-        <div><b>{theirs.length}</b><span>Owned</span></div>
-        <div><b>{avg != null ? avg.toFixed(1) + "★" : "—"}</b><span>Your average</span></div>
-        {rank >= 0 ? <div><b>#{rank + 1}</b><span>Your ranking</span></div> : <div><b>{seen}<small>/{theirs.length}</small></b><span>Watched</span></div>}
-      </div>
       {bio && (
         <p className={"director-bio" + (open ? " open" : "")} onClick={() => setOpen(!open)}>{bio}</p>
       )}
-      {theirs.length > 1 && (
+      {strip.length > 1 && (
         <>
-          <div className="section-label caps dir-sub">On your shelf</div>
+          <div className="dir-sub">
+            <span className="section-label caps">Filmography</span>
+            <span className="muted tnum">{theirs.length} of {strip.length} on your shelf</span>
+          </div>
           <div className="shelf-row dir-films" ref={row}>
-            {theirs.map((f) => f.key === film.key ? (
+            {strip.map((f) => f.key === film.key ? (
               <div key={f.key} className="shelf-item here" aria-current="true">
                 <Poster path={f.posterPath} title={f.name} size="w185" />
                 <span>{f.year} · <em>This film</em></span>
               </div>
+            ) : f.missing ? (
+              <button key={f.key} className="shelf-item missing" onClick={() => onAdd({ name: f.name, year: f.year })} aria-label={`${f.name} (${f.year}), not on your shelf. Add it`}>
+                <Poster path={f.posterPath} title={f.name} size="w185" />
+                <span>{f.year}</span>
+              </button>
             ) : (
               <button key={f.key} className="shelf-item" onPointerDown={() => preloadFilm(f)} onClick={() => onOpen(f)}>
                 <Poster path={f.posterPath} title={f.name} size="w185" />
@@ -1261,7 +1273,7 @@ function ListPage({ nav = "in", below = false, entry, films, backLabel, onBack, 
 }
 
 // ─── FILM PAGE ──────────────────────────────────────────────────────────
-function FilmPage({ nav = "in", below = false, film, films, ix, onNight, onBuildAround, allTags, backLabel, onBack, onOpen, onPerson, onUpdate, onLog, onUnlog, onRemove, onPicker, onAddTag, onRemoveTag, onEditCopy, onEditDetails }) {
+function FilmPage({ nav = "in", below = false, onAdd, film, films, ix, onNight, onBuildAround, allTags, backLabel, onBack, onOpen, onPerson, onUpdate, onLog, onUnlog, onRemove, onPicker, onAddTag, onRemoveTag, onEditCopy, onEditDetails }) {
   const [note, setNote] = useState(film.note);
   const [newTag, setNewTag] = useState(null);
   const [editTags, setEditTags] = useState(false);
@@ -1369,7 +1381,7 @@ function FilmPage({ nav = "in", below = false, film, films, ix, onNight, onBuild
             ))}
           </section>
 
-          {film.directors.length > 0 && <DirectorCard film={film} films={films} onOpen={onOpen} onPerson={onPerson} />}
+          {film.directors.length > 0 && <DirectorCard film={film} films={films} onOpen={onOpen} onPerson={onPerson} onAdd={onAdd} />}
 
           <dl className="dl">
             <div><dt>Last watched</dt><dd className="tnum">{film.lastWatched ? fmtDate(film.lastWatched) : "Never logged"}</dd></div>
@@ -2635,7 +2647,7 @@ export default function App() {
         const f = byKey.get(e);
         if (!f) return null;
         return (
-          <FilmPage key={depth + ":" + e} nav={nav} below={below} film={f} films={films} ix={ix} onNight={setNight} onBuildAround={buildAround} allTags={allTags} onAddTag={D.addTag} onRemoveTag={D.removeTag}
+          <FilmPage key={depth + ":" + e} nav={nav} below={below} onAdd={setAdding} film={f} films={films} ix={ix} onNight={setNight} onBuildAround={buildAround} allTags={allTags} onAddTag={D.addTag} onRemoveTag={D.removeTag}
             onEditCopy={(c) => setCopyEdit({ key: f.key, copy: c })} onEditDetails={() => setDetailsFor(f.key)} backLabel={label} onBack={back} onOpen={openFilm} onPerson={onPerson}
             onUpdate={D.updateFilm} onLog={(key, date, rating) => { D.logWatch(key, date, rating); if (rating !== undefined) D.updateFilm(key, { rating }); }} onUnlog={D.unlogWatch} onRemove={D.removeFilm} onPicker={(t) => setPicking({ key: f.key, tab: t })} />
         );
