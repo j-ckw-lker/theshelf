@@ -1191,10 +1191,35 @@ function useSwipeBack(ref, onBack) {
       if (dim) dim.style.opacity = String(1 - k);
       else u.style.filter = `brightness(${0.7 + 0.3 * k})`;
     };
+    let tgt = null;
+    const follow = (t) => {
+      unfollow();
+      tgt = t;
+      tgt.addEventListener("touchmove", move, { passive: false });
+      tgt.addEventListener("touchend", end);
+      tgt.addEventListener("touchcancel", end);
+    };
+    const unfollow = () => {
+      if (!tgt) return;
+      tgt.removeEventListener("touchmove", move);
+      tgt.removeEventListener("touchend", end);
+      tgt.removeEventListener("touchcancel", end);
+      tgt = null;
+    };
+    // Belt and braces: if a page is ever left parked to the side, the next touch anywhere puts it back.
+    const rescue = (e) => {
+      if (e.touches.length !== 1 || leaving || !el.style.transform) return;
+      unfollow(); mode = null; set(0, true); // a new first finger means any earlier swipe is long over
+    };
     const start = (e) => {
       if (e.touches.length !== 1 || e.target.closest(".shelf-row, input, textarea, select, .scrim")) { mode = "off"; return; }
       sx = e.touches[0].clientX; sy = e.touches[0].clientY; t0 = Date.now(); mode = null; dx = 0;
       if (!leaving) uEl = null;
+      // Follow the rest of this touch on the element it started on. iOS keeps sending a touch's events
+      // to that element even if it's swapped out of the page mid-swipe (a poster or banner finishing
+      // loading), and a removed element's events never reach the page, so the page used to get
+      // stranded half off screen. Listening on the target itself always hears the end of the swipe.
+      follow(e.target);
     };
     const move = (e) => {
       if (mode === "off" || mode === "v") return;
@@ -1209,6 +1234,7 @@ function useSwipeBack(ref, onBack) {
       set(dx, false);
     };
     const end = () => {
+      unfollow();
       if (mode !== "h") {
         mode = null;
         if (!leaving && el.style.transform) set(0, true); // never leave the page parked off to the side
@@ -1224,14 +1250,11 @@ function useSwipeBack(ref, onBack) {
       } else set(0, true);
     };
     el.addEventListener("touchstart", start, { passive: true });
-    el.addEventListener("touchmove", move, { passive: false });
-    el.addEventListener("touchend", end);
-    el.addEventListener("touchcancel", end);
+    document.addEventListener("touchstart", rescue, { passive: true, capture: true });
     return () => {
+      unfollow();
       el.removeEventListener("touchstart", start);
-      el.removeEventListener("touchmove", move);
-      el.removeEventListener("touchend", end);
-      el.removeEventListener("touchcancel", end);
+      document.removeEventListener("touchstart", rescue, { capture: true });
     };
   }, []);
 }
