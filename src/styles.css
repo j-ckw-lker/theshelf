@@ -378,14 +378,14 @@ html[data-vt="morph"]::view-transition-old(root), html[data-vt="morph"]::view-tr
 html[data-vt="push"]::view-transition-old(root), html[data-vt="push"]::view-transition-new(root),
 html[data-vt="pop"]::view-transition-old(root), html[data-vt="pop"]::view-transition-new(root) { animation: none; }
 ::view-transition-group(film-page) { animation-duration: 0.42s; animation-timing-function: cubic-bezier(.2, .9, .3, 1); }
-html[data-vt="morph"]::view-transition-new(film-page) { animation: vt-fade-up 0.4s cubic-bezier(.2, .9, .3, 1) both; }
+html[data-vt="morph"]::view-transition-new(film-page) { animation: vt-fade-up 0.3s cubic-bezier(.2, .9, .3, 1) both; }
 html[data-vt="push"]::view-transition-new(film-page) { animation: vt-slide-in 0.44s cubic-bezier(.2, .9, .3, 1) both; }
 html[data-vt="morph"]::view-transition-old(film-page), html[data-vt="push"]::view-transition-old(film-page) { animation: vt-out 0.24s ease both; }
 html[data-vt="pop"]::view-transition-old(film-page) { animation: vt-slide-out 0.38s cubic-bezier(.4, 0, .2, 1) both; }
 html[data-vt="pop"]::view-transition-new(film-page) { animation: vt-in 0.28s ease both; }
 @keyframes vt-slide-in { from { transform: translateX(100%); } }
 @keyframes vt-slide-out { to { transform: translateX(100%); } }
-@keyframes vt-fade-up { from { opacity: 0; transform: translateX(24px); } }
+@keyframes vt-fade-up { from { opacity: 0.45; transform: translateX(14px); } }
 html[data-vt="tab"]::view-transition-old(root) { animation: vt-out 0.16s ease both; }
 html[data-vt="tab"]::view-transition-new(root) { animation: vt-in 0.24s ease 0.05s both; }
 @keyframes vt-out { to { opacity: 0; } }
@@ -469,3 +469,6 @@ html[data-vt="reflow"]::view-transition-old(root), html[data-vt="reflow"]::view-
 .poster .poster-hi.on { opacity: 1; }
 .banner-img { opacity: 0; transition: opacity 0.35s ease; }
 .banner-img.on { opacity: 1; }
+/* Until the banner arrives, the top of a film page glows with a blurred copy of the poster. */
+.film-hero .banner-blur { position: absolute; inset: -40px; width: calc(100% + 80px); height: calc(100% + 80px); object-fit: cover; filter: blur(28px) saturate(1.2); opacity: 0.55; transform: scale(1.1); }
+.film-hero .banner-img { position: relative; }

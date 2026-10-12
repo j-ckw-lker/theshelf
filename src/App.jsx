@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from "react";
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback, memo } from "react";
 import SEED_COLLECTION from "./collection.json";
 import COLLECTIONS from "./collections.json";
 import META from "./meta.json";
@@ -19,6 +19,14 @@ import "./styles.css";
 // ════════════════════════════════════════════════════════════════════════
 
 // ─── STORED DATA ────────────────────────────────────────────────────────
+// A callback whose identity never changes but always runs the latest code, so memoized tabs
+// don't re-render just because the parent made a new function.
+function useEvent(fn) {
+  const ref = useRef(fn);
+  ref.current = fn;
+  return useCallback((...args) => ref.current(...args), []);
+}
+
 function useStored(key, initial) {
   const [value, setValue] = useState(() => readJSON(key, typeof initial === "function" ? initial() : initial));
   const save = useCallback((next) => {
@@ -1176,7 +1184,14 @@ function FilmPage({ film, films, ix, onNight, onBuildAround, allTags, backLabel,
 
   const today = todayISO();
   const loggedToday = film.lastWatched === today;
-  const pairsWith = useMemo(() => (ix ? partnersFor(ix, film, 3) : []), [ix, film]);
+  // Scoring partners touches the whole shelf; do it right after the page appears, not before.
+  const [pairsWith, setPairsWith] = useState([]);
+  useEffect(() => {
+    setPairsWith([]);
+    if (!ix) return;
+    const id = setTimeout(() => setPairsWith(partnersFor(ix, film, 3)), 60);
+    return () => clearTimeout(id);
+  }, [ix, film.key]);
   const owned = useMemo(() => new Set(films.map((f) => f.tmdb)), [films]);
   const coll = film.collection && COLLECTIONS[film.collection];
   const collOwned = coll ? coll.parts.filter((p) => owned.has(p[0])).length : 0;
@@ -1186,6 +1201,7 @@ function FilmPage({ film, films, ix, onNight, onBuildAround, allTags, backLabel,
     <div className="film-page" ref={ref} role="dialog" aria-label={film.name}>
       <div className="film-inner">
         <div className="film-hero">
+          {film.posterPath && <img className="banner-blur" src={img(film.posterPath, "w92")} alt="" aria-hidden="true" />}
           {film.backdrop && <Banner key={film.backdrop} path={film.backdrop} pos={film.backdropPos} />}
           {film.tmdb && <button className="icon-btn glass banner-edit" onClick={() => onPicker("banner")} aria-label="Change banner"><Icon d={I.image} size={17} sw={2} /></button>}
           <button className="back" onClick={onBack}><Icon d={I.back} size={20} sw={2.4} /><span>{backLabel}</span></button>
@@ -2336,6 +2352,9 @@ function Backup({ D, sync, films, onBuy, bare }) {
   );
 }
 
+// Hidden tabs stay built but skip re-rendering unless their own inputs change.
+const HomeTab = memo(Home), LibraryTab = memo(Library), StatsTab = memo(Stats), DoublesTab = memo(Doubles);
+
 // ─── ROOT ───────────────────────────────────────────────────────────────
 const TABS = [["home", "Home", I.home], ["library", "Library", I.library], ["doubles", "Doubles", I.doubles], ["stats", "Stats", I.stats]];
 const TAB_NAMES = Object.fromEntries(TABS.map(([k, l]) => [k, l]));
@@ -2453,22 +2472,29 @@ export default function App() {
     D.logWatch(a.key); D.logWatch(b.key);
     if (program) D.saveProgram({ ...program, watched: todayISO() });
   };
+  const openFilmE = useEvent(openFilm);
+  const onSeeAllE = useEvent((s, el) => toLibrary({ label: s.title, test: s.test }, el));
+  const onSearchE = useEvent(() => { toLibrary(null); setSearchFocus((n) => n + 1); });
+  const onFiltersE = useEvent((x) => (x === "reset" ? setFilters({}) : setShowFilters(true)));
+  const onDoublesE = useEvent(() => { setDblView("feed"); goTab("doubles"); });
+  const onAddE = useEvent(() => setAdding({}));
+  const onSettingsE = useEvent(() => setSettings(true));
+  const onFocusedE = useEvent(() => setSearchFocus(0));
+  const onPersonE = useEvent(onPerson);
+  const onLabelE = useEvent((l) => toLibrary({ label: l, test: (f) => f.copies.some((c) => c.label === l) }));
   const backLabel = stack.length > 1 ? (byKey.get(stack[stack.length - 2])?.name || "Back") : TAB_NAMES[tab];
 
   return (
     <div className="app">
       <main hidden={tab !== "home"}>
-        <Home films={films} defs={defs} recipes={recipes} filters={filters} home={home} setHome={setHome} active={tab === "home" && !top}
-          onOpen={openFilm} onSeeAll={(s, el) => toLibrary({ label: s.title, test: s.test }, el)}
-          onSearch={() => { toLibrary(null); setSearchFocus((n) => n + 1); }}
-          onFilters={(x) => (x === "reset" ? setFilters({}) : setShowFilters(true))}
-          onPair={setNight} onDoubles={() => { setDblView("feed"); goTab("doubles"); }} />
+        <HomeTab films={films} defs={defs} recipes={recipes} filters={filters} home={home} setHome={setHome} active={tab === "home"}
+          onOpen={openFilmE} onSeeAll={onSeeAllE} onSearch={onSearchE} onFilters={onFiltersE} onPair={setNight} onDoubles={onDoublesE} />
       </main>
       {/* Tabs stay built in the background, so switching back is instant and keeps your place. */}
-      <main hidden={tab !== "library"}><Library films={films} customTags={D.customTags} extra={extra} setExtra={setExtra} onOpen={openFilm} onAdd={() => setAdding({})} onSettings={() => setSettings(true)} searchFocus={searchFocus} onFocused={() => setSearchFocus(0)} /></main>
-      <main hidden={tab !== "stats"}><Stats films={films} onPerson={onPerson} onLabel={(l) => toLibrary({ label: l, test: (f) => f.copies.some((c) => c.label === l) })} /></main>
+      <main hidden={tab !== "library"}><LibraryTab films={films} customTags={D.customTags} extra={extra} setExtra={setExtra} onOpen={openFilmE} onAdd={onAddE} onSettings={onSettingsE} searchFocus={searchFocus} onFocused={onFocusedE} /></main>
+      <main hidden={tab !== "stats"}><StatsTab films={films} onPerson={onPersonE} onLabel={onLabelE} /></main>
       {(tab === "library" || tab === "doubles" || tab === "stats") && !top && <BackToTop key={tab} />}
-      <main hidden={tab !== "doubles"}><Doubles films={films} ix={ix} programs={D.programs} view={dblView} setView={setDblView} anchor={anchor} setAnchor={setAnchor} onNight={setNight} finish={finish} /></main>
+      <main hidden={tab !== "doubles"}><DoublesTab films={films} ix={ix} programs={D.programs} view={dblView} setView={setDblView} anchor={anchor} setAnchor={setAnchor} onNight={setNight} finish={finish} /></main>
 
       {top && (
         <FilmPage key="film" film={top} films={films} ix={ix} onNight={setNight} onBuildAround={buildAround} allTags={allTags} onAddTag={D.addTag} onRemoveTag={D.removeTag}
