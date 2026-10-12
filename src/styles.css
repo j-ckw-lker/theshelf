@@ -499,3 +499,31 @@ html[data-vt="reflow"]::view-transition-old(root), html[data-vt="reflow"]::view-
 /* Until the banner arrives, the top of a film page glows with a blurred copy of the poster. */
 .film-hero .banner-blur { position: absolute; inset: -40px; width: calc(100% + 80px); height: calc(100% + 80px); object-fit: cover; filter: blur(28px) saturate(1.2); opacity: 0.55; transform: scale(1.1); }
 .film-hero .banner-img { position: relative; }
+
+/* ─── Wishlist ─── */
+.wish-page { padding-bottom: 24px; }
+.seg-n { font-weight: 400; color: var(--label-2); font-size: 12px; }
+.want-list { margin: 0 -20px; display: flex; flex-direction: column; }
+.want-row .thumb { width: 46px; flex-shrink: 0; }
+.want-row.got .title { color: var(--label-2); text-decoration: line-through; text-decoration-color: rgba(246, 244, 240, 0.3); }
+.want-row .title .muted { font-size: 14px; }
+.want-row .meta .who { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.accent-badge { border-color: rgba(205, 179, 138, 0.6); color: var(--accent-text); }
+.set-thumb { position: relative; aspect-ratio: 2 / 3; display: block; border-radius: 4px; background: var(--bg-2); border: 0.5px solid var(--rule-soft); overflow: hidden; }
+.set-thumb i { position: absolute; top: 18%; bottom: 18%; width: 18%; border-radius: 2px; background: linear-gradient(var(--accent-soft), rgba(205, 179, 138, 0.08)); border: 0.5px solid rgba(205, 179, 138, 0.45); }
+.set-thumb i:nth-child(1) { left: 20%; } .set-thumb i:nth-child(2) { left: 41%; } .set-thumb i:nth-child(3) { left: 62%; }
+.got-head { display: flex; align-items: center; justify-content: space-between; padding: 18px 34px 8px 20px; font-size: 15px; font-weight: 600; color: var(--label); }
+.want-hero { display: flex; gap: 14px; align-items: center; margin-bottom: 16px; }
+.want-hero h2 { margin: 0 0 4px; font-size: 20px; line-height: 1.2; }
+.want-hero .muted { font-size: 14px; }
+.want-poster { width: 84px; flex-shrink: 0; }
+.want-fields { display: flex; flex-direction: column; gap: 12px; margin: 18px 0 16px; }
+.want-fields label > span { display: block; font-size: 13px; color: var(--label-2); margin-bottom: 6px; }
+.want-fields .chips { margin: 0; padding: 0; }
+.shelf-links { display: flex; gap: 16px; align-items: baseline; }
+.dir-films .missing { position: relative; }
+.dir-films .missing.wanted .poster { opacity: 0.55; }
+.want-dot { position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; border-radius: 11px; display: grid; place-items: center; background: rgba(0, 0, 0, 0.6); color: var(--accent-text); }
+.list-page .page { padding-top: 0; }
+.want-actions { flex-direction: column; }
+.want-actions .btn { height: 46px; flex: none; width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; text-decoration: none; }

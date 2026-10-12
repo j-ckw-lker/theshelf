@@ -3,6 +3,7 @@ import SEED_COLLECTION from "./collection.json";
 import COLLECTIONS from "./collections.json";
 import META from "./meta.json";
 import { SEED_WANTLIST } from "./wantlist.js";
+import { IMPORTED_WANTS, IMPORT_ID } from "./imports.js";
 import {
   store, readJSON, fkey, img, tmdb, shapeTmdbMovie, todayISO, thisYear, fmtDate, runtimeLabel, stars,
   sortKey, letterOf, peopleLabel, hashStr, rng, shuffled, yearsSince, parseEdition, copyBadges, copyLine, money,
@@ -38,6 +39,8 @@ function useStored(key, initial) {
   }, [key]);
   return [value, save];
 }
+
+const wantId = (w) => w.film + "|" + (w.year || "");
 
 // Watch log: per film, a list of { date, rating? }. Older saves stored a single date string.
 const entriesOf = (v) => (Array.isArray(v) ? v : v ? [{ date: v }] : []);
@@ -76,6 +79,20 @@ function useData() {
       return left.length ? { ...rest, [k]: left } : rest;
     }),
     setWant,
+    addWant: (w) => setWant((ws) => (ws.some((x) => wantId(x) === wantId(w)) ? ws : [{ added: todayISO(), bought: false, kind: "new", ...w }, ...ws])),
+    updateWant: (id, patch) => setWant((ws) => ws.map((x) => (wantId(x) === id ? { ...x, ...patch } : x))),
+    removeWant: (id) => setWant((ws) => ws.filter((x) => wantId(x) !== id)),
+    // Merge an outside list (Orbit, Amazon): new titles go on top, existing ones only gain the fields they lack.
+    importWants: (list) => setWant((ws) => {
+      const k = (w) => wantId(w).toLowerCase();
+      const incoming = new Map(list.map((w) => [k(w), w]));
+      const have = new Set(ws.map(k));
+      const merged = ws.map((x) => {
+        const imp = incoming.get(k(x));
+        return imp ? { ...imp, ...Object.fromEntries(Object.entries(x).filter(([, v]) => v !== "" && v != null)) } : x;
+      });
+      return [...list.filter((w) => !have.has(k(w))), ...merged];
+    }),
     importAll: (p) => {
       if (p.userData) setUserData(p.userData);
       if (p.added) setAdded(p.added);
@@ -287,6 +304,7 @@ const I = {
   shuffle: <path d="M3 7h3.5c2.5 0 4 1.3 5.5 5s3 5 5.5 5H21M3 17h3.5c1.6 0 2.8-.6 3.8-1.8M13.7 8.8C14.7 7.6 15.9 7 17.5 7H21m-2.5-2.5L21 7l-2.5 2.5m0 5L21 17l-2.5 2.5" />,
   arrow: <path d="M12 5v14M6 13l6 6 6-6" />,
   up: <path d="M12 19V5M6 11l6-6 6 6" />,
+  heart: <path d="M12 20.3s-7.6-4.5-7.6-10.3A4.2 4.2 0 0 1 12 7.4 4.2 4.2 0 0 1 19.6 10c0 5.8-7.6 10.3-7.6 10.3Z" />,
   doubles: <><rect x="2.75" y="5" width="8.5" height="14" rx="1.5" /><rect x="12.75" y="5" width="8.5" height="14" rx="1.5" /></>,
   gear: <><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" /></>,
   image: <><rect x="3.5" y="5" width="17" height="14" rx="2" /><circle cx="9" cy="10" r="1.6" /><path d="m4 17 5-4.5 3.5 3 3-2.5 4.5 4" /></>,
@@ -564,12 +582,18 @@ function usePullToRefresh(onRefresh, enabled) {
   return { pull, refreshing, dragging: pull > 0 && !refreshing };
 }
 
-function Home({ films, defs, recipes, filters, home, setHome, onOpen, onSeeAll, onSearch, onFilters, onPair, onDoubles, active }) {
+function Home({ films, defs, recipes, filters, home, setHome, onOpen, onSeeAll, onSearch, onFilters, onPair, onDoubles, saved = 0, active }) {
   const eligible = useMemo(() => films.filter(filterTest(defs, filters)), [films, defs, filters]);
   const pick = pickFrom(eligible, home.date, home.pick);
   const extra = home.more || 0;
-  const shelves = useMemo(() => dealShelves(recipes, hashStr(home.date) + home.seed * 104729, 6 + extra * 3), [recipes, home.date, home.seed, extra]);
-  const canDealMore = shelves.length === 6 + extra * 3 && recipes.length > shelves.length;
+  // Double features are a fixture now (they used to have a tab): always the first shelf.
+  const shelves = useMemo(() => {
+    const seed = hashStr(home.date) + home.seed * 104729;
+    const pairs = recipes.find((r) => r.kind === "pairs");
+    const rest = dealShelves(recipes.filter((r) => r.kind !== "pairs"), seed, 6 + extra * 3);
+    return pairs ? [...dealShelves([pairs], seed, 1), ...rest] : rest;
+  }, [recipes, home.date, home.seed, extra]);
+  const canDealMore = shelves.filter((s) => s.kind !== "pairs").length === 6 + extra * 3 && recipes.length > shelves.length;
   const labels = activeFilterLabels(defs, filters);
   const filterLabel = labels.length === 0 ? "Filters" : labels.length === 1 ? labels[0] : labels[0] + " +" + (labels.length - 1);
   const [logoFailed, setLogoFailed] = useState(false);
@@ -657,7 +681,10 @@ function Home({ films, defs, recipes, filters, home, setHome, onOpen, onSeeAll, 
                 <h2>{s.title}</h2>
                 <p>{s.kind === "pairs" ? "Two films, one night" : `${s.films.length} ${s.kind === "person" ? "on your shelf" : "films"}`}</p>
               </div>
-              <button className="link" onClick={(e) => (s.kind === "pairs" ? onDoubles() : onSeeAll(s, e.currentTarget))}>See all</button>
+              <span className="shelf-links">
+                {s.kind === "pairs" && saved > 0 && <button className="link" onClick={() => onDoubles("saved")}>Saved {saved}</button>}
+                <button className="link" onClick={(e) => (s.kind === "pairs" ? onDoubles("feed") : onSeeAll(s, e.currentTarget))}>See all</button>
+              </span>
             </div>
             {s.kind === "pairs" ? (
               <div className="shelf-row">
@@ -870,7 +897,7 @@ function Library({ films, customTags, extra, setExtra, onOpen, onAdd, onSettings
               <Icon d={view === "wall" ? I.list : I.wall} size={22} sw={1.9} />
             </button>
             <button className="icon-btn" onClick={onAdd} aria-label="Add a film"><Icon d={I.plus} size={24} sw={2.2} /></button>
-            <button className="icon-btn" onClick={onSettings} aria-label="Backup, tags and want list"><Icon d={I.gear} size={21} sw={1.9} /></button>
+            <button className="icon-btn" onClick={onSettings} aria-label="Backup and tags"><Icon d={I.gear} size={21} sw={1.9} /></button>
           </div>
         </div>
         <label className="search">
@@ -1056,7 +1083,7 @@ function useDirector(film) {
   return info;
 }
 
-function DirectorCard({ film, films, onOpen, onPerson, onAdd }) {
+function DirectorCard({ film, films, onOpen, onPerson, onPeek, wanted }) {
   const name = film.directors[0];
   const info = useDirector(film);
   const [open, setOpen] = useState(false);
@@ -1066,7 +1093,7 @@ function DirectorCard({ film, films, onOpen, onPerson, onAdd }) {
   const strip = useMemo(() => {
     const owned = new Set(theirs.map((f) => Number(f.tmdb)).filter(Boolean));
     const missing = (info?.films || []).filter((m) => !owned.has(m.id))
-      .map((m) => ({ key: "tmdb:" + m.id, missing: true, name: m.title, year: m.year, yearNum: +m.year, posterPath: m.poster, sortKey: m.title.toLowerCase() }));
+      .map((m) => ({ key: "tmdb:" + m.id, tmdb: m.id, missing: true, name: m.title, year: m.year, yearNum: +m.year, posterPath: m.poster, sortKey: m.title.toLowerCase() }));
     return [...theirs, ...missing].sort((a, b) => a.yearNum - b.yearNum || a.sortKey.localeCompare(b.sortKey));
   }, [films, name, info]);
   const year = (d) => (d ? d.slice(0, 4) : null);
@@ -1109,8 +1136,9 @@ function DirectorCard({ film, films, onOpen, onPerson, onAdd }) {
                 <span>{f.year} · <em>This film</em></span>
               </div>
             ) : f.missing ? (
-              <button key={f.key} className="shelf-item missing" onClick={() => onAdd({ name: f.name, year: f.year })} aria-label={`${f.name} (${f.year}), not on your shelf. Add it`}>
+              <button key={f.key} className={"shelf-item missing" + (wanted.has((f.name + "|" + f.year).toLowerCase()) ? " wanted" : "")} onClick={() => onPeek(f)} aria-label={`${f.name} (${f.year}), not on your shelf`}>
                 <Poster path={f.posterPath} title={f.name} size="w185" />
+                {wanted.has((f.name + "|" + f.year).toLowerCase()) && <i className="want-dot" aria-label="On your wishlist"><Icon d={I.heart} size={12} sw={2.4} /></i>}
                 <span>{f.year}</span>
               </button>
             ) : (
@@ -1272,8 +1300,245 @@ function ListPage({ nav = "in", below = false, entry, films, backLabel, onBack, 
   );
 }
 
+// Double features, pushed onto the stack from Home or a film page instead of living in a tab.
+function DoublesPage({ nav = "in", below = false, entry, films, ix, programs, onNight, finish, backLabel, onBack }) {
+  const ref = useRef(null);
+  const [mountedBelow] = useState(below);
+  useSwipeBack(ref, onBack);
+  const [view, setView] = useState(entry.view || "feed");
+  const [anchor, setAnchor] = useState(entry.anchor || null);
+  return (
+    <div className={stackClass(nav, below, mountedBelow, " list-page")} ref={ref} role="dialog" aria-label="Double features" aria-hidden={below || undefined}>
+      <div className="film-inner">
+        <div className="list-bar">
+          <button className="back" onClick={() => onBack()}><Icon d={I.back} size={20} sw={2.4} /><span>{backLabel}</span></button>
+        </div>
+        <Doubles films={films} ix={ix} programs={programs} view={view} setView={setView} anchor={anchor} setAnchor={setAnchor} onNight={onNight} finish={finish}
+          toTop={(smooth) => ref.current?.scrollTo({ top: 0, behavior: smooth ? "smooth" : "auto" })} />
+      </div>
+    </div>
+  );
+}
+
+// ─── WISHLIST ───────────────────────────────────────────────────────────
+// Posters for wants are looked up on TMDB once and kept on this device.
+const wantArt = readJSON("shelf-want-art", {});
+function useWantArt(list) {
+  const [art, setArt] = useState(wantArt);
+  useEffect(() => {
+    let dead = false;
+    const todo = list.filter((w) => !w.set && !w.poster && !(wantId(w) in wantArt));
+    if (!todo.length) return;
+    (async () => {
+      for (const w of todo) {
+        if (dead) return;
+        try {
+          const res = await tmdb("/search/movie", { query: w.film, ...(w.year ? { year: w.year } : {}) });
+          const hit = (res.results || []).find((r) => w.year && (r.release_date || "").startsWith(w.year)) || res.results?.[0];
+          wantArt[wantId(w)] = hit ? { poster: hit.poster_path || null, tmdb: hit.id } : null;
+        } catch { return; } // offline or TMDB hiccup: try again next time
+        store.set("shelf-want-art", JSON.stringify(wantArt));
+        if (!dead) setArt({ ...wantArt });
+      }
+    })();
+    return () => { dead = true; };
+  }, [list.length]);
+  return art;
+}
+const WANT_SEGS = [["all", "All"], ["new", "New"], ["upgrade", "Upgrades"], ["set", "Sets"]];
+const WANT_SORTS = {
+  recent: ["Recently added", null],
+  title: ["Title A–Z", (a, b) => sortKey(a.film).toLowerCase().localeCompare(sortKey(b.film).toLowerCase())],
+  low: ["Price: low to high", (a, b) => (a.price ?? 1e9) - (b.price ?? 1e9)],
+  high: ["Price: high to low", (a, b) => (b.price ?? -1) - (a.price ?? -1)],
+  year: ["Oldest film", (a, b) => (+a.year || 9999) - (+b.year || 9999)],
+};
+const usd = (n) => "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+function WantThumb({ w, path, className = "thumb" }) {
+  if (w.set) return <span className={className + " set-thumb"} aria-hidden="true"><i /><i /><i /></span>;
+  return <Poster path={path} title={w.film} size="w92" className={className} />;
+}
+
+function Wishlist({ want, films, onOpenWant, onNew }) {
+  const [seg, setSeg] = useState("all");
+  const [sort, setSort] = useState(() => (WANT_SORTS[store.get("shelf-wantsort")] ? store.get("shelf-wantsort") : "recent"));
+  const [q, setQ] = useState("");
+  const [showGot, setShowGot] = useState(false);
+  const owned = useMemo(() => new Map(films.map((f) => [(f.name + "|" + f.year).toLowerCase(), f])), [films]);
+  const art = useWantArt(want);
+  // An owned film is an upgrade when you said so, or when it came from a store list (you saved a better edition);
+  // an old "new" want you now own was probably bought, so it gets flagged instead.
+  const ownedOf = (w) => owned.get(wantId(w).toLowerCase());
+  const kindOf = (w) => (w.set ? "set" : w.kind === "upgrade" || (ownedOf(w) && w.store) ? "upgrade" : "new");
+  const pathOf = (w) => w.poster || owned.get(wantId(w).toLowerCase())?.posterPath || art[wantId(w)]?.poster || null;
+  const open = want.filter((w) => !w.bought);
+  const got = want.filter((w) => w.bought);
+  const query = q.trim().toLowerCase();
+  const list = open
+    .filter((w) => seg === "all" || kindOf(w) === seg)
+    .filter((w) => !query || [w.film, w.label, w.store, w.note].some((x) => (x || "").toLowerCase().includes(query)));
+  if (WANT_SORTS[sort][1]) list.sort(WANT_SORTS[sort][1]);
+  const priced = list.filter((w) => w.price != null);
+  const total = priced.reduce((n, w) => n + w.price, 0);
+  const counts = Object.fromEntries(WANT_SEGS.map(([k]) => [k, k === "all" ? open.length : open.filter((w) => kindOf(w) === k).length]));
+
+  const row = (w) => {
+    const kind = kindOf(w);
+    return (
+      <button key={wantId(w)} className={"film-row want-row" + (w.bought ? " got" : "")} onClick={() => onOpenWant(w)}>
+        <WantThumb w={w} path={pathOf(w)} />
+        <span className="body">
+          <span className="title">{w.film}{w.year && <span className="muted tnum"> {w.year}</span>}</span>
+          {w.label && <span className="meta"><span className="who">{w.label}</span></span>}
+          <span className="meta tnum">
+            {kind === "upgrade" && <span className="badge accent-badge">Upgrade</span>}
+            {kind === "set" && <span className="badge">Set</span>}
+            {kind === "new" && ownedOf(w) && !w.bought && <span className="accent">Already on your shelf</span>}
+            {w.store && <span>{w.store}</span>}
+            {w.price != null && <span>{usd(w.price)}</span>}
+          </span>
+        </span>
+      </button>
+    );
+  };
+
+  return (
+    <div className="page wish-page">
+      <div className="page-head">
+        <h1>Wishlist</h1>
+        <button className="icon-btn" onClick={onNew} aria-label="Add a want"><Icon d={I.plus} size={24} sw={2.2} /></button>
+      </div>
+      <label className="search">
+        <Icon d={I.search} size={16} sw={2.2} />
+        <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Title, edition or store" aria-label="Search the wishlist" />
+      </label>
+      <div className="seg" role="tablist" aria-label="Show">
+        {WANT_SEGS.map(([k, l]) => (
+          <button key={k} role="tab" aria-selected={seg === k} className={seg === k ? "on" : ""} onClick={() => setSeg(k)}>{l} <span className="tnum seg-n">{counts[k]}</span></button>
+        ))}
+      </div>
+      <div className="lib-bar">
+        <span className="lib-count tnum muted">{list.length} {list.length === 1 ? "want" : "wants"}{priced.length ? ` · ${usd(total)}` : ""}</span>
+        <label className="sort">
+          {WANT_SORTS[sort][0]}<Icon d={I.down} size={12} sw={2.6} />
+          <select value={sort} onChange={(e) => { setSort(e.target.value); store.set("shelf-wantsort", e.target.value); }} aria-label="Sort by">
+            {Object.entries(WANT_SORTS).map(([k, [l]]) => <option key={k} value={k}>{l}</option>)}
+          </select>
+        </label>
+      </div>
+      <div className="want-list">
+        {list.length === 0 && <div className="empty">{query ? `Nothing on the wishlist matches "${q.trim()}".` : "Nothing here. Tap + to add a want, or tap a greyed-out poster in any director's filmography."}</div>}
+        {list.map(row)}
+      </div>
+      {got.length > 0 && (
+        <div className="want-list">
+          <button className="got-head" onClick={() => setShowGot(!showGot)} aria-expanded={showGot}>
+            <span>Got it <span className="muted tnum">{got.length}</span></span>
+            <Icon d={I.down} size={13} sw={2.6} />
+          </button>
+          {showGot && got.map(row)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// One want: where to buy it, what edition, and "Got it" when it arrives.
+function WantSheet({ w, films, onUpdate, onRemove, onGot, onOpenFilm, onClose }) {
+  const ownedFilm = films.find((f) => (f.name + "|" + f.year).toLowerCase() === wantId(w).toLowerCase());
+  const [label, setLabel] = useState(w.label || "");
+  const [store_, setStore] = useState(w.store || "");
+  const [price, setPrice] = useState(w.price != null ? String(w.price) : "");
+  const [url, setUrl] = useState(w.url || "");
+  const [note, setNote] = useState(w.note || "");
+  const art = wantArt[wantId(w)];
+  const path = w.poster || ownedFilm?.posterPath || art?.poster || null;
+  const save = () => {
+    const p = parseFloat(price.replace(/[$,]/g, ""));
+    onUpdate({ label: label.trim(), store: store_.trim(), price: Number.isFinite(p) ? p : undefined, url: url.trim(), note: note.trim() });
+  };
+  const close = () => { save(); onClose(); };
+  return (
+    <Sheet title={w.set ? "Box set" : ownedFilm ? "Upgrade" : "Want"} onClose={close}>
+      <div className="want-hero">
+        <WantThumb w={w} path={path} className="want-poster" />
+        <div>
+          <h2>{w.film}</h2>
+          <span className="muted tnum">{[w.year, w.price != null && usd(w.price), w.store].filter(Boolean).join(" · ")}</span>
+          {ownedFilm && <button className="link" style={{ fontSize: 14, marginTop: 6 }} onClick={() => { save(); onOpenFilm(ownedFilm); }}>You own a copy. See it</button>}
+        </div>
+      </div>
+      <div className="btn-row want-actions">
+        {url && <a className="btn btn-primary" href={url} target="_blank" rel="noopener noreferrer">Open at {store_ || "store"}</a>}
+        {!w.bought
+          ? <button className={"btn " + (url ? "btn-outline" : "btn-primary")} onClick={() => { save(); onGot(); }}>{ownedFilm ? "Got it, add the new copy" : w.set ? "Got it" : "Got it, add to my shelf"}</button>
+          : <button className="btn btn-outline" onClick={() => { save(); onUpdate({ bought: false }); onClose(); }}>Move back to wants</button>}
+      </div>
+      <div className="want-fields">
+        <label><span>Edition</span><input className="field" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Arrow 4K Limited Edition" /></label>
+        <div style={{ display: "flex", gap: 8 }}>
+          <label style={{ flex: 1 }}><span>Store</span><input className="field" value={store_} onChange={(e) => setStore(e.target.value)} placeholder="Orbit, Amazon…" /></label>
+          <label style={{ width: 110 }}><span>Price</span><input className="field tnum" value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" placeholder="$0.00" /></label>
+        </div>
+        <label><span>Link</span><input className="field" value={url} onChange={(e) => setUrl(e.target.value)} inputMode="url" placeholder="https://" /></label>
+        <label><span>Note</span><textarea className="notes" rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Why you want it, what to wait for" /></label>
+      </div>
+      <button className="danger" onClick={() => { onRemove(); onClose(); }}>Remove from wishlist</button>
+    </Sheet>
+  );
+}
+
+function NewWantSheet({ onAdd, onClose }) {
+  const [film, setFilm] = useState(""); const [year, setYear] = useState(""); const [label, setLabel] = useState("");
+  const [st, setSt] = useState(""); const [price, setPrice] = useState(""); const [isSet, setIsSet] = useState(false);
+  const add = () => {
+    if (!film.trim()) return;
+    const p = parseFloat(price.replace(/[$,]/g, ""));
+    onAdd({ film: film.trim(), year: isSet ? "" : year.trim(), label: label.trim(), store: st.trim(), price: Number.isFinite(p) ? p : undefined, set: isSet || undefined, kind: "new" });
+  };
+  return (
+    <Sheet title="Add a want" onClose={onClose} right={<button className="link" onClick={add} disabled={!film.trim()} style={{ fontWeight: 600 }}>Add</button>}>
+      <div className="want-fields">
+        <label><span>Title</span><input className="field" value={film} onChange={(e) => setFilm(e.target.value)} placeholder="Film or box set" autoFocus /></label>
+        <div className="chips">
+          <button className={"chip" + (!isSet ? " on" : "")} onClick={() => setIsSet(false)}>Film</button>
+          <button className={"chip" + (isSet ? " on" : "")} onClick={() => setIsSet(true)}>Box set</button>
+        </div>
+        {!isSet && <label><span>Year</span><input className="field tnum" value={year} onChange={(e) => setYear(e.target.value)} inputMode="numeric" placeholder="1986" /></label>}
+        <label><span>Edition</span><input className="field" value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Arrow 4K Limited Edition" /></label>
+        <div style={{ display: "flex", gap: 8 }}>
+          <label style={{ flex: 1 }}><span>Store</span><input className="field" value={st} onChange={(e) => setSt(e.target.value)} placeholder="Orbit, Amazon…" /></label>
+          <label style={{ width: 110 }}><span>Price</span><input className="field tnum" value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" placeholder="$0.00" /></label>
+        </div>
+      </div>
+    </Sheet>
+  );
+}
+
+// Tapping a greyed-out film in a director's filmography.
+function PeekSheet({ f, onWant, wanted, onOwn, onClose }) {
+  return (
+    <Sheet title={f.name} onClose={onClose}>
+      <div className="want-hero">
+        <Poster path={f.posterPath} title={f.name} size="w185" className="want-poster" />
+        <div>
+          <h2>{f.name}</h2>
+          <span className="muted tnum">{f.year} · Not on your shelf</span>
+        </div>
+      </div>
+      <div className="btn-row want-actions">
+        {wanted
+          ? <button className="btn btn-done" disabled><Icon d={I.check} size={16} sw={2.6} />On your wishlist</button>
+          : <button className="btn btn-primary" onClick={() => { onWant(); onClose(); }}><Icon d={I.heart} size={16} sw={2.2} />Add to wishlist</button>}
+        <button className="btn btn-outline" onClick={onOwn}>I own it, add to shelf</button>
+      </div>
+    </Sheet>
+  );
+}
+
 // ─── FILM PAGE ──────────────────────────────────────────────────────────
-function FilmPage({ nav = "in", below = false, onAdd, film, films, ix, onNight, onBuildAround, allTags, backLabel, onBack, onOpen, onPerson, onUpdate, onLog, onUnlog, onRemove, onPicker, onAddTag, onRemoveTag, onEditCopy, onEditDetails }) {
+function FilmPage({ nav = "in", below = false, onPeek, wanted, film, films, ix, onNight, onBuildAround, allTags, backLabel, onBack, onOpen, onPerson, onUpdate, onLog, onUnlog, onRemove, onPicker, onAddTag, onRemoveTag, onEditCopy, onEditDetails }) {
   const [note, setNote] = useState(film.note);
   const [newTag, setNewTag] = useState(null);
   const [editTags, setEditTags] = useState(false);
@@ -1381,7 +1646,7 @@ function FilmPage({ nav = "in", below = false, onAdd, film, films, ix, onNight, 
             ))}
           </section>
 
-          {film.directors.length > 0 && <DirectorCard film={film} films={films} onOpen={onOpen} onPerson={onPerson} onAdd={onAdd} />}
+          {film.directors.length > 0 && <DirectorCard film={film} films={films} onOpen={onOpen} onPerson={onPerson} onPeek={onPeek} wanted={wanted} />}
 
           <dl className="dl">
             <div><dt>Last watched</dt><dd className="tnum">{film.lastWatched ? fmtDate(film.lastWatched) : "Never logged"}</dd></div>
@@ -2093,7 +2358,7 @@ function PairCard({ p, finish, onOpen }) {
   );
 }
 
-function Doubles({ films, ix, programs, view, setView, anchor, setAnchor, onNight, finish }) {
+function Doubles({ films, ix, programs, view, setView, anchor, setAnchor, onNight, finish, toTop = (smooth) => window.scrollTo({ top: 0, behavior: smooth ? "smooth" : "auto" }) }) {
   const best = useMemo(() => bestPairs(ix), [ix]);
   const [seed, setSeed] = useState(0);
   const [shown, setShown] = useState(10);
@@ -2106,7 +2371,7 @@ function Doubles({ films, ix, programs, view, setView, anchor, setAnchor, onNigh
   const recent = useMemo(() => films.filter((f) => f.lastWatched).sort((a, b) => b.lastWatched.localeCompare(a.lastWatched)).slice(0, 8), [films]);
   const byKey = useMemo(() => new Map(films.map((f) => [f.key, f])), [films]);
   const saved = programs.map((pr) => ({ pr, a: byKey.get(pr.a), b: byKey.get(pr.b) })).filter((x) => x.a && x.b);
-  const pick = (f) => { setAnchor(f.key); setQ(""); window.scrollTo(0, 0); };
+  const pick = (f) => { setAnchor(f.key); setQ(""); toTop(); };
 
   return (
     <div className="page">
@@ -2121,7 +2386,7 @@ function Doubles({ films, ix, programs, view, setView, anchor, setAnchor, onNigh
         <>
           <div className="lib-bar">
             <span className="muted">Pairs from your shelf, matched on themes, crew, cast and era.</span>
-            <button className="filter-btn" style={{ fontSize: 14, flexShrink: 0 }} onClick={() => { setSeed(seed + 1); setShown(10); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
+            <button className="filter-btn" style={{ fontSize: 14, flexShrink: 0 }} onClick={() => { setSeed(seed + 1); setShown(10); toTop(true); }}>
               <Icon d={I.shuffle} size={15} sw={2.2} />Shuffle
             </button>
           </div>
@@ -2400,7 +2665,7 @@ function Backup({ D, sync, films, onBuy, bare }) {
           <button className="btn btn-outline" style={{ height: 46 }} onClick={() => fileRef.current.click()}>Restore from backup</button>
         </div>
         <input ref={fileRef} type="file" accept="application/json,.json" onChange={doImport} style={{ display: "none" }} />
-        <span className="muted" style={{ fontSize: 13, lineHeight: 1.45 }}>{msg || "Tags, notes, poster choices, double features, films added here, the want list and watch log live only on this device. Export now and then, and always before clearing Safari."}</span>
+        <span className="muted" style={{ fontSize: 13, lineHeight: 1.45 }}>{msg || "Tags, notes, poster choices, double features, films added here, the wishlist and watch log live only on this device. Export now and then, and always before clearing Safari."}</span>
       </section>
 
       <section className="stat-section" style={{ gap: 0 }}>
@@ -2432,50 +2697,16 @@ function Backup({ D, sync, films, onBuy, bare }) {
         <span className="muted" style={{ fontSize: 13, marginTop: 8 }}>{D.customTags.length ? "Removing a tag takes it off every film." : "Make your own tags from any film's page, under Tags."}</span>
       </section>
 
-      <section className="stat-section" style={{ gap: 0 }}>
-        <div className="stat-head" style={{ marginBottom: 6 }}>
-          <h2>Want list</h2>
-          <button className="link" onClick={() => setAdding(!adding)}>{adding ? "Cancel" : "Track a release"}</button>
-        </div>
-        {adding && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "6px 0 12px" }}>
-            <input className="field" value={nf} onChange={(e) => setNf(e.target.value)} placeholder="Title" aria-label="Title" autoFocus />
-            <div style={{ display: "flex", gap: 8 }}>
-              <input className="field" style={{ width: 96 }} value={ny} onChange={(e) => setNy(e.target.value)} placeholder="Year" aria-label="Year" inputMode="numeric" />
-              <input className="field" value={nl} onChange={(e) => setNl(e.target.value)} placeholder="Edition, e.g. Arrow 4K" aria-label="Edition" />
-            </div>
-            <button className="btn btn-primary" onClick={add}>Add to want list</button>
-          </div>
-        )}
-        {want.length === 0 && <div className="empty">Nothing on the want list.</div>}
-        {want.map((w, i) => (
-          <div className="list-row" key={i + w.film} style={{ alignItems: "flex-start" }}>
-            <button className={"check" + (w.bought ? " on" : "")} aria-pressed={w.bought} aria-label={(w.bought ? "Unmark " : "Mark ") + w.film + " as bought"} onClick={() => toggle(i)}>
-              {w.bought && <Icon d={I.check} size={13} sw={3.2} />}
-            </button>
-            <div className="grow" style={{ whiteSpace: "normal", opacity: w.bought ? 0.5 : 1 }}>
-              {w.film} <span className="muted tnum">{w.year}</span>
-              <div className="muted" style={{ fontSize: 13, marginTop: 2 }}>{[w.label, kinds[w.kind]].filter(Boolean).join(" · ")}</div>
-              {!w.bought && w.kind !== "upgrade" && owned.has(w.film + "|" + w.year) && <div className="accent" style={{ fontSize: 13, marginTop: 2 }}>Already on your shelf</div>}
-              <div style={{ display: "flex", gap: 18, marginTop: 6 }}>
-                {w.bought && <button className="link" style={{ fontSize: 14 }} onClick={() => onBuy(w)}>Add to shelf</button>}
-                <button style={{ fontSize: 14, color: "var(--danger)" }} onClick={() => remove(i)}>Remove</button>
-              </div>
-            </div>
-          </div>
-        ))}
-      </section>
-
       <p className="foot">Film data and images from TMDB. This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
     </div>
   );
 }
 
 // Hidden tabs stay built but skip re-rendering unless their own inputs change.
-const HomeTab = memo(Home), LibraryTab = memo(Library), StatsTab = memo(Stats), DoublesTab = memo(Doubles);
+const HomeTab = memo(Home), LibraryTab = memo(Library), StatsTab = memo(Stats), WishlistTab = memo(Wishlist);
 
 // ─── ROOT ───────────────────────────────────────────────────────────────
-const TABS = [["home", "Home", I.home], ["library", "Library", I.library], ["doubles", "Doubles", I.doubles], ["stats", "Stats", I.stats]];
+const TABS = [["home", "Home", I.home], ["library", "Library", I.library], ["wishlist", "Wishlist", I.heart], ["stats", "Stats", I.stats]];
 const TAB_NAMES = Object.fromEntries(TABS.map(([k, l]) => [k, l]));
 
 export default function App() {
@@ -2500,8 +2731,15 @@ export default function App() {
   const ix = useMemo(() => pairIndex(films), [films]);
   const homePairs = useMemo(() => bestPairs(ix, 60), [ix]);
   const recipes = useMemo(() => buildRecipes(films, D.customTags, homePairs), [films, D.customTags, homePairs]);
-  const [dblView, setDblView] = useState("feed");
-  const [anchor, setAnchor] = useState(null);
+  const [wantOpen, setWantOpen] = useState(null); // a want's id, for its sheet
+  const [peek, setPeek] = useState(null); // a greyed-out filmography film
+  const wanted = useMemo(() => new Set(D.want.filter((w) => !w.bought).map((w) => wantId(w).toLowerCase())), [D.want]);
+  // Pull in the Orbit + Amazon wishlists once per device.
+  useEffect(() => {
+    if (store.get("shelf-import-" + IMPORT_ID)) return;
+    D.importWants(IMPORTED_WANTS);
+    store.set("shelf-import-" + IMPORT_ID, "1");
+  }, []);
   const [night, setNight] = useState(null);
   const [settings, setSettings] = useState(false);
   const [finish, setFinish] = useStored("shelf-finishby", 23);
@@ -2536,7 +2774,7 @@ export default function App() {
   const top = stack.length ? stack[stack.length - 1] : null;
   const entryName = (e) => (typeof e === "string" ? byKey.get(e)?.name || "Back" : e.label);
   const listSeq = useRef(0);
-  useBodyLock(!!top || !!adding || !!picking || showFilters || !!copyEdit || !!detailsFor || !!night || settings);
+  useBodyLock(!!top || !!wantOpen || !!peek || !!adding || !!picking || showFilters || !!copyEdit || !!detailsFor || !!night || settings);
 
   // Film pages use a plain iOS-style push: the page slides in the instant you tap (no screen snapshot
   // to wait for, unlike a view transition) and slides back out to the right.
@@ -2602,7 +2840,7 @@ export default function App() {
     if (t) t.finished.finally(clear); else clear();
   };
   const onPerson = (name) => pushList({ kind: "person", label: name, test: (f) => f.directors.includes(name) || f.dop.includes(name) || f.music.includes(name) || f.cast.includes(name) });
-  const buildAround = (f) => { forgetScroll(); setAnchor(f.key); setDblView("build"); setStack([]); setNight(null); setTab("doubles"); window.scrollTo(0, 0); };
+  const buildAround = (f) => { setNight(null); pushList({ kind: "doubles", label: "Double features", view: "build", anchor: f.key }); };
   const logBoth = (a, b, program) => {
     D.logWatch(a.key); D.logWatch(b.key);
     if (program) D.saveProgram({ ...program, watched: todayISO() });
@@ -2611,7 +2849,9 @@ export default function App() {
   const onSeeAllE = useEvent((s) => pushList({ kind: "shelf", label: s.title, test: s.test }));
   const onSearchE = useEvent(() => { toLibrary(null); setSearchFocus((n) => n + 1); });
   const onFiltersE = useEvent((x) => (x === "reset" ? setFilters({}) : setShowFilters(true)));
-  const onDoublesE = useEvent(() => { setDblView("feed"); goTab("doubles"); });
+  const onDoublesE = useEvent((view = "feed") => pushList({ kind: "doubles", label: "Double features", view }));
+  const onOpenWantE = useEvent((w) => setWantOpen(wantId(w)));
+  const onNewWantE = useEvent(() => setWantOpen("new"));
   const onAddE = useEvent(() => setAdding({}));
   const onSettingsE = useEvent(() => setSettings(true));
   const onFocusedE = useEvent(() => setSearchFocus(0));
@@ -2625,15 +2865,15 @@ export default function App() {
       <div className={"under" + (covered ? " covered" : "")}>
       <main hidden={tab !== "home"}>
         <HomeTab films={films} defs={defs} recipes={recipes} filters={filters} home={home} setHome={setHome} active={tab === "home"}
-          onOpen={openFilmE} onSeeAll={onSeeAllE} onSearch={onSearchE} onFilters={onFiltersE} onPair={setNight} onDoubles={onDoublesE} />
+          onOpen={openFilmE} onSeeAll={onSeeAllE} onSearch={onSearchE} onFilters={onFiltersE} onPair={setNight} onDoubles={onDoublesE} saved={D.programs.length} />
       </main>
       {/* Tabs stay built in the background, so switching back is instant and keeps your place. */}
       <main hidden={tab !== "library"}><LibraryTab films={films} customTags={D.customTags} extra={extra} setExtra={setExtra} onOpen={openFilmE} onAdd={onAddE} onSettings={onSettingsE} searchFocus={searchFocus} onFocused={onFocusedE} /></main>
       <main hidden={tab !== "stats"}><StatsTab films={films} onPerson={onPersonE} onLabel={onLabelE} /></main>
-      <main hidden={tab !== "doubles"}><DoublesTab films={films} ix={ix} programs={D.programs} view={dblView} setView={setDblView} anchor={anchor} setAnchor={setAnchor} onNight={setNight} finish={finish} /></main>
+      <main hidden={tab !== "wishlist"}><WishlistTab want={D.want} films={films} onOpenWant={onOpenWantE} onNew={onNewWantE} /></main>
       </div>
       <div className={"nav-dim" + (covered ? " on" : "")} aria-hidden="true" />
-      {(tab === "library" || tab === "doubles" || tab === "stats") && !top && <BackToTop key={tab} />}
+      {(tab === "library" || tab === "wishlist" || tab === "stats") && !top && <BackToTop key={tab} />}
 
       {stack.slice(-2).map((e, i, arr) => {
         const isTop = i === arr.length - 1;
@@ -2641,13 +2881,16 @@ export default function App() {
         const label = depth > 0 ? entryName(stack[depth - 1]) : TAB_NAMES[tab];
         const nav = isTop && leaving ? "leaving" : "in";
         const below = !isTop && !leaving;
+        if (typeof e !== "string" && e.kind === "doubles") {
+          return <DoublesPage key={depth + ":" + e.id} nav={nav} below={below} entry={e} films={films} ix={ix} programs={D.programs} onNight={setNight} finish={finish} backLabel={label} onBack={back} />;
+        }
         if (typeof e !== "string") {
           return <ListPage key={depth + ":" + e.id} nav={nav} below={below} entry={e} films={films} backLabel={label} onBack={back} onOpen={openFilm} />;
         }
         const f = byKey.get(e);
         if (!f) return null;
         return (
-          <FilmPage key={depth + ":" + e} nav={nav} below={below} onAdd={setAdding} film={f} films={films} ix={ix} onNight={setNight} onBuildAround={buildAround} allTags={allTags} onAddTag={D.addTag} onRemoveTag={D.removeTag}
+          <FilmPage key={depth + ":" + e} nav={nav} below={below} onPeek={setPeek} wanted={wanted} film={f} films={films} ix={ix} onNight={setNight} onBuildAround={buildAround} allTags={allTags} onAddTag={D.addTag} onRemoveTag={D.removeTag}
             onEditCopy={(c) => setCopyEdit({ key: f.key, copy: c })} onEditDetails={() => setDetailsFor(f.key)} backLabel={label} onBack={back} onOpen={openFilm} onPerson={onPerson}
             onUpdate={D.updateFilm} onLog={(key, date, rating) => { D.logWatch(key, date, rating); if (rating !== undefined) D.updateFilm(key, { rating }); }} onUnlog={D.unlogWatch} onRemove={D.removeFilm} onPicker={(t) => setPicking({ key: f.key, tab: t })} />
         );
@@ -2686,6 +2929,25 @@ export default function App() {
             D.updateFilm(picking.key, kind === "poster" ? { poster: v } : { backdrop: v, backdropPos: undefined });
             if (kind === "poster") setPicking(null);
           }} />
+      )}
+      {wantOpen === "new" && <NewWantSheet onAdd={(w) => { D.addWant(w); setWantOpen(null); }} onClose={() => setWantOpen(null)} />}
+      {wantOpen && wantOpen !== "new" && D.want.find((w) => wantId(w) === wantOpen) && (() => {
+        const w = D.want.find((x) => wantId(x) === wantOpen);
+        return (
+          <WantSheet key={wantOpen} w={w} films={films} onUpdate={(patch) => D.updateWant(wantOpen, patch)} onRemove={() => D.removeWant(wantOpen)}
+            onGot={() => {
+              D.updateWant(wantOpen, { bought: true }); setWantOpen(null);
+              const mine = films.find((f) => (f.name + "|" + f.year).toLowerCase() === wantOpen.toLowerCase());
+              if (mine) setCopyEdit({ key: mine.key, copy: null }); // an upgrade: log the new copy on the film you have
+              else if (!w.set) setAdding({ name: w.film, year: w.year, label: w.label });
+            }}
+            onOpenFilm={(f) => { setWantOpen(null); openFilm(f); }} onClose={() => setWantOpen(null)} />
+        );
+      })()}
+      {peek && (
+        <PeekSheet f={peek} wanted={wanted.has((peek.name + "|" + peek.year).toLowerCase())}
+          onWant={() => D.addWant({ film: peek.name, year: peek.year, poster: peek.posterPath || undefined, tmdb: peek.tmdb, store: "", label: "" })}
+          onOwn={() => { setPeek(null); setAdding({ name: peek.name, year: peek.year }); }} onClose={() => setPeek(null)} />
       )}
       {adding && <AddSheet prefill={adding} existing={films} onAdd={(f) => { D.addFilm({ ...f, addedAt: todayISO() }); setAdding(null); }} onClose={() => setAdding(null)} />}
     </div>
