@@ -41,9 +41,11 @@ function useData() {
   const [watchLog, setWatchLog] = useStored("shelf-watchlog", {});
   const [customTags, setCustomTags] = useStored("shelf-customtags", []);
   const [programs, setPrograms] = useStored("shelf-programs", []);
+  const [labels, setLabels] = useStored("shelf-labels", []); // labels you've typed, offered as chips from then on
   const retag = (fn) => setUserData((d) => Object.fromEntries(Object.entries(d).map(([k, u]) => [k, u.tags ? { ...u, tags: fn(u.tags) } : u])));
   return {
-    userData, added, want, watchLog, customTags, programs,
+    userData, added, want, watchLog, customTags, programs, labels,
+    addLabel: (name) => setLabels((l) => (l.includes(name) ? l : [...l, name])),
     saveProgram: (p) => setPrograms((ps) => (ps.some((x) => x.id === p.id) ? ps.map((x) => (x.id === p.id ? { ...x, ...p } : x)) : [{ ...p, created: todayISO() }, ...ps])),
     removeProgram: (id) => setPrograms((ps) => ps.filter((x) => x.id !== id)),
     addTag: (name) => setCustomTags((t) => (t.includes(name) || TAGS[name] ? t : [...t, name])),
@@ -73,8 +75,9 @@ function useData() {
       if (p.watchLog) setWatchLog(p.watchLog);
       if (p.customTags) setCustomTags(p.customTags);
       if (p.programs) setPrograms(p.programs);
+      if (p.labels) setLabels(p.labels);
     },
-    exportPayload: () => ({ userData, added, want, watchLog, customTags, programs }),
+    exportPayload: () => ({ userData, added, want, watchLog, customTags, programs, labels }),
   };
 }
 
@@ -82,9 +85,9 @@ function useData() {
 // Keeps a copy of everything personal on the server (api/sync.js), locked with a passphrase:
 // saves a moment after each change, checks for newer copies when the app opens or comes back,
 // and merges when two devices both changed things. A new install just enters the passphrase.
-const SYNC_FIELDS = ["userData", "added", "want", "watchLog", "customTags", "programs"];
+const SYNC_FIELDS = ["userData", "added", "want", "watchLog", "customTags", "programs", "labels"];
 const hasPersonal = (d) => !!(Object.keys(d.userData || {}).length || (d.added || []).length || Object.keys(d.watchLog || {}).length
-  || (d.customTags || []).length || (d.programs || []).length);
+  || (d.customTags || []).length || (d.programs || []).length || (d.labels || []).length);
 const unionBy = (a = [], b = [], key) => { const m = new Map(); a.forEach((x) => m.set(key(x), x)); b.forEach((x) => m.set(key(x), x)); return [...m.values()]; };
 // Combine two copies; where both have the same thing, the second (this device) wins.
 function mergeDocs(server = {}, local = {}) {
@@ -100,6 +103,7 @@ function mergeDocs(server = {}, local = {}) {
     customTags: [...new Set([...(server.customTags || []), ...(local.customTags || [])])],
     programs: unionBy(server.programs, local.programs, (p) => p.id),
     want: unionBy(server.want, local.want, (w) => w.film + "|" + w.year),
+    labels: [...new Set([...(server.labels || []), ...(local.labels || [])])],
   };
 }
 
@@ -1453,7 +1457,9 @@ function PosterPicker({ film, startTab = "poster", onPick, onClose }) {
 }
 
 // ─── EDIT A COPY ────────────────────────────────────────────────────────
-function CopySheet({ film, copy, labels, onSave, onClose }) {
+function CopySheet({ film, copy, labels, onNewLabel, onSave, onClose }) {
+  const [allLabels, setAllLabels] = useState(false);
+  const [newLabel, setNewLabel] = useState(null);
   const isNew = !copy;
   const [c, setC] = useState(() => copy ? { ...copy, price: copy.price ?? "" } : { id: newId(), format: "", package: "Standard", label: "", region: "", purchased: "", price: "", note: "" });
   const set = (k, v) => setC((x) => ({ ...x, [k]: v }));
@@ -1488,9 +1494,30 @@ function CopySheet({ film, copy, labels, onSave, onClose }) {
       <div><span className="field-label">Format</span><Chips k="format" opts={FORMATS} allowNone /></div>
       <div><span className="field-label">Package</span><Chips k="package" opts={PACKAGES} /></div>
       <div>
-        <label className="field-label" htmlFor="copy-label">Label or distributor</label>
-        <input id="copy-label" className="field" list="label-list" value={c.label} onChange={(e) => set("label", e.target.value)} placeholder="Criterion, Arrow, Vinegar Syndrome…" autoComplete="off" />
-        <datalist id="label-list">{labels.map((l) => <option key={l} value={l} />)}</datalist>
+        <span className="field-label">Label or distributor</span>
+        <div className="tag-row">
+          {(() => {
+            const pool = c.label && !labels.includes(c.label) ? [c.label, ...labels] : labels;
+            const shown = allLabels ? pool : pool.filter((l, i) => i < 12 || l === c.label);
+            return (
+              <>
+                {shown.map((l) => (
+                  <button key={l} type="button" className={"chip" + (c.label === l ? " on" : "")} aria-pressed={c.label === l} onClick={() => set("label", c.label === l ? "" : l)}>{l}</button>
+                ))}
+                {!allLabels && pool.length > shown.length && <button type="button" className="chip" style={{ color: "var(--accent-text)" }} onClick={() => setAllLabels(true)}>All {pool.length}</button>}
+              </>
+            );
+          })()}
+          {newLabel == null ? (
+            <button type="button" className="chip chip-x" style={{ color: "var(--accent-text)", borderStyle: "dashed" }} onClick={() => setNewLabel("")}><Icon d={I.plus} size={13} sw={2.6} />New label</button>
+          ) : (
+            <form style={{ display: "flex" }} onSubmit={(e) => { e.preventDefault(); e.currentTarget.querySelector("input").blur(); }}>
+              <input id="copy-label" className="field" style={{ height: 32, width: 190, fontSize: 15 }} value={newLabel} onChange={(e) => setNewLabel(e.target.value)} autoFocus maxLength={40}
+                placeholder="e.g. Powerhouse Films" aria-label="New label name"
+                onBlur={() => { const n = canonicalLabel(newLabel.trim().replace(/\s+/g, " ")); if (n) { onNewLabel(n); set("label", n); } setNewLabel(null); }} />
+            </form>
+          )}
+        </div>
       </div>
       <div><span className="field-label">Region</span><Chips k="region" opts={REGIONS} allowNone /></div>
       <div style={{ display: "flex", gap: 10 }}>
@@ -2315,7 +2342,13 @@ export default function App() {
   const [finish, setFinish] = useStored("shelf-finishby", 23);
   const defs = useMemo(() => makeFilters(D.customTags), [D.customTags]);
   const allTags = useMemo(() => [...Object.entries(TAGS), ...D.customTags.map((t) => [t, t])], [D.customTags]);
-  const labels = useMemo(() => [...new Set([...KNOWN_LABELS, ...films.flatMap((f) => f.copies.map((c) => c.label).filter(Boolean))])].sort(), [films]);
+  // Label chips for copies: the ones you use most, then ones you've typed, then the usual boutique and studio labels.
+  const labels = useMemo(() => {
+    const used = new Map();
+    films.forEach((f) => f.copies.forEach((c) => c.label && used.set(c.label, (used.get(c.label) || 0) + 1)));
+    const byUse = [...used].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map((x) => x[0]);
+    return [...new Set([...byUse, ...D.labels.map(canonicalLabel), ...KNOWN_LABELS])];
+  }, [films, D.labels]);
   const [copyEdit, setCopyEdit] = useState(null);
   const [detailsFor, setDetailsFor] = useState(null);
 
@@ -2433,7 +2466,7 @@ export default function App() {
         </Sheet>
       )}
       {copyEdit && byKey.get(copyEdit.key) && (
-        <CopySheet film={byKey.get(copyEdit.key)} copy={copyEdit.copy} labels={labels} onClose={() => setCopyEdit(null)}
+        <CopySheet film={byKey.get(copyEdit.key)} copy={copyEdit.copy} labels={labels} onNewLabel={D.addLabel} onClose={() => setCopyEdit(null)}
           onSave={(copies) => { D.updateFilm(copyEdit.key, { copies }); setCopyEdit(null); }} />
       )}
       {detailsFor && byKey.get(detailsFor) && <DetailsSheet film={byKey.get(detailsFor)} onUpdate={D.updateFilm} onClose={() => setDetailsFor(null)} />}
