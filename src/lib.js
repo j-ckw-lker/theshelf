@@ -119,7 +119,10 @@ export function shuffled(list, rand) {
 }
 
 // ─── Copies (the physical discs you own of a film) ─────────────────────
-export const FORMATS = ["4K", "Blu-ray", "DVD", "Other"];
+export const FORMATS = ["4K", "Blu-ray", "DVD", "Other", "Digital 4K", "Digital HD", "Digital SD"];
+// Digital copies carry their resolution in the format name, like discs do (4K UHD = 2160p, Blu-ray = 1080p).
+export const isDigital = (c) => /^Digital/.test(c.format || "");
+export const CODE_QUALITIES = ["4K", "HD"];
 export const PACKAGES = ["Standard", "Steelbook", "Limited", "Collector's", "Box set"];
 export const REGIONS = ["A", "B", "C", "Free"];
 const LABEL_PATTERNS = [
@@ -167,11 +170,13 @@ export function parseEdition(text = "") {
 export function copyBadges(copies) {
   const out = [];
   if (copies.some((c) => c.format === "4K")) out.push("4K");
+  if (copies.length && copies.every(isDigital)) out.push("Digital only");
   if (copies.some((c) => c.package === "Steelbook")) out.push("Steelbook");
   [...new Set(copies.map((c) => c.label).filter(Boolean))].forEach((l) => out.push(l));
-  if (copies.length > 1) out.push(copies.length + " copies");
+  const physical = copies.filter((c) => !isDigital(c));
+  if (physical.length > 1) out.push(physical.length + " copies");
   return out;
 }
 
-export const copyLine = (c) => [c.package && c.package !== "Standard" ? c.package : null, c.label || null].filter(Boolean).join(" · ") || "Standard";
+export const copyLine = (c) => (isDigital(c) ? c.label || "Digital copy" : [c.package && c.package !== "Standard" ? c.package : null, c.label || null].filter(Boolean).join(" · ") || "Standard");
 export const money = (n) => (n == null || n === "" ? "" : "$" + Number(n).toFixed(Number(n) % 1 ? 2 : 0));

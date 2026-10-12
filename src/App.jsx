@@ -3,11 +3,11 @@ import SEED_COLLECTION from "./collection.json";
 import COLLECTIONS from "./collections.json";
 import META from "./meta.json";
 import { SEED_WANTLIST } from "./wantlist.js";
-import { IMPORTED_WANTS, IMPORT_ID } from "./imports.js";
+import { IMPORTED_WANTS, IMPORT_ID, IMPORT2_ID, IMPORT2_ADD, IMPORT2_PATCH } from "./imports.js";
 import {
   store, readJSON, fkey, img, tmdb, shapeTmdbMovie, todayISO, thisYear, fmtDate, runtimeLabel, stars,
   sortKey, letterOf, peopleLabel, hashStr, rng, shuffled, yearsSince, parseEdition, copyBadges, copyLine, money,
-  FORMATS, PACKAGES, REGIONS, KNOWN_LABELS, canonicalLabel, newId,
+  FORMATS, PACKAGES, REGIONS, KNOWN_LABELS, canonicalLabel, newId, isDigital, CODE_QUALITIES,
 } from "./lib.js";
 import { TAGS, THEMES, makeFilters, filterTest, activeFilterLabels, buildRecipes, dealShelves } from "./shelves.js";
 import { pairIndex, bestPairs, partnersFor, scorePair, nightPlan, reasonLine } from "./pairs.js";
@@ -28,6 +28,20 @@ function useEvent(fn) {
   return useCallback((...args) => ref.current(...args), []);
 }
 
+// Preferences: one value per key in localStorage, shared live between every component that reads it.
+const PREF_EVENT = "shelf-pref";
+const getPref = (key, def) => { const v = store.get(key); return v == null || v === "" ? def : typeof def === "number" ? (Number.isFinite(+v) ? +v : def) : typeof def === "boolean" ? v === "1" : v; };
+const setPrefValue = (key, v) => { store.set(key, typeof v === "boolean" ? (v ? "1" : "0") : String(v)); window.dispatchEvent(new CustomEvent(PREF_EVENT, { detail: key })); };
+function usePref(key, def) {
+  const [v, setV] = useState(() => getPref(key, def));
+  useEffect(() => {
+    const on = (e) => { if (e.detail === key) setV(getPref(key, def)); };
+    window.addEventListener(PREF_EVENT, on);
+    return () => window.removeEventListener(PREF_EVENT, on);
+  }, [key]);
+  return [v, useCallback((n) => setPrefValue(key, n), [key])];
+}
+
 function useStored(key, initial) {
   const [value, setValue] = useState(() => readJSON(key, typeof initial === "function" ? initial() : initial));
   const save = useCallback((next) => {
@@ -40,6 +54,21 @@ function useStored(key, initial) {
   return [value, save];
 }
 
+// RFC 4180-ish CSV: quoted fields, doubled quotes, commas and newlines inside quotes.
+function parseCSV(text) {
+  const rows = []; let row = [], cur = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) {
+      if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === ",") { row.push(cur); cur = ""; }
+    else if (ch === "\n" || ch === "\r") { if (ch === "\r" && text[i + 1] === "\n") i++; row.push(cur); rows.push(row); row = []; cur = ""; }
+    else cur += ch;
+  }
+  if (cur || row.length) { row.push(cur); rows.push(row); }
+  return rows.filter((r) => r.some((x) => x.trim()));
+}
 const wantId = (w) => w.film + "|" + (w.year || "");
 
 // Watch log: per film, a list of { date, rating? }. Older saves stored a single date string.
@@ -57,6 +86,15 @@ function useData() {
   return {
     userData, added, want, watchLog, customTags, programs, labels,
     addLabel: (name) => setLabels((l) => (l.includes(name) ? l : [...l, name])),
+    removeLabel: (name) => setLabels((l) => l.filter((x) => x !== name)),
+    // Letterboxd diary import: { filmKey: [{date, rating}] }. Anything already logged here wins on the same date.
+    importDiary: (byKey) => setWatchLog((w) => {
+      const next = { ...w };
+      Object.entries(byKey).forEach(([k, list]) => {
+        next[k] = unionBy(list, entriesOf(next[k]), (e) => e.date).sort((a, b) => a.date.localeCompare(b.date));
+      });
+      return next;
+    }),
     saveProgram: (p) => setPrograms((ps) => (ps.some((x) => x.id === p.id) ? ps.map((x) => (x.id === p.id ? { ...x, ...p } : x)) : [{ ...p, created: todayISO() }, ...ps])),
     removeProgram: (id) => setPrograms((ps) => ps.filter((x) => x.id !== id)),
     addTag: (name) => setCustomTags((t) => (t.includes(name) || TAGS[name] ? t : [...t, name])),
@@ -83,7 +121,7 @@ function useData() {
     updateWant: (id, patch) => setWant((ws) => ws.map((x) => (wantId(x) === id ? { ...x, ...patch } : x))),
     removeWant: (id) => setWant((ws) => ws.filter((x) => wantId(x) !== id)),
     // Merge an outside list (Orbit, Amazon): new titles go on top, existing ones only gain the fields they lack.
-    importWants: (list) => setWant((ws) => {
+    importWants: (list, { addNew = true } = {}) => setWant((ws) => {
       const k = (w) => wantId(w).toLowerCase();
       const incoming = new Map(list.map((w) => [k(w), w]));
       const have = new Set(ws.map(k));
@@ -91,7 +129,7 @@ function useData() {
         const imp = incoming.get(k(x));
         return imp ? { ...imp, ...Object.fromEntries(Object.entries(x).filter(([, v]) => v !== "" && v != null)) } : x;
       });
-      return [...list.filter((w) => !have.has(k(w))), ...merged];
+      return addNew ? [...list.filter((w) => !have.has(k(w))), ...merged] : merged;
     }),
     importAll: (p) => {
       if (p.userData) setUserData(p.userData);
@@ -267,6 +305,9 @@ function deriveFilm(raw, userData, watchLog) {
     copies,
     copiesSuggested: !u.copies && copies.length > 0,
     badges: copyBadges(copies),
+    digitalOnly: copies.length > 0 && copies.every(isDigital),
+    hasDigital: copies.some((c) => isDigital(c) || c.code),
+    unredeemed: copies.some((c) => c.code && !c.codeRedeemed),
     // When it joined the shelf: earliest copy purchase date, else the day it was added here, else reconstructed history.
     addedOn: copies.map((c) => c.purchased).filter(Boolean).sort()[0] || f.addedAt || f.added || null,
     addedSince: f.addedSince || null,
@@ -311,6 +352,10 @@ const I = {
   swap: <path d="M7 4 3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7" />,
   wall: <><rect x="3.5" y="3.5" width="7.5" height="7.5" rx="1" /><rect x="13" y="3.5" width="7.5" height="7.5" rx="1" /><rect x="3.5" y="13" width="7.5" height="7.5" rx="1" /><rect x="13" y="13" width="7.5" height="7.5" rx="1" /></>,
   sliders: <><path d="M4 7h9M17 7h3M4 17h3M11 17h9" /><circle cx="15" cy="7" r="2" /><circle cx="9" cy="17" r="2" /></>,
+  you: <><circle cx="12" cy="8.5" r="4" /><path d="M4.5 20.5c1.2-3.8 4-5.8 7.5-5.8s6.3 2 7.5 5.8" /></>,
+  calendar: <><rect x="4" y="5" width="16" height="15" rx="2" /><path d="M4 10h16M9 3v4M15 3v4" /></>,
+  tag: <><path d="M3.5 12.2V4.5a1 1 0 0 1 1-1h7.7l8.3 8.3a1 1 0 0 1 0 1.4l-7.1 7.1a1 1 0 0 1-1.4 0Z" /><circle cx="8" cy="8" r="1.4" /></>,
+  cloud: <path d="M7 18a4.5 4.5 0 0 1-.6-9A6 6 0 0 1 18 8.5a4 4 0 0 1-.5 9.5Z" />,
   list: <><path d="M9 6h11M9 12h11M9 18h11" /><circle cx="4.5" cy="6" r="1" fill="currentColor" /><circle cx="4.5" cy="12" r="1" fill="currentColor" /><circle cx="4.5" cy="18" r="1" fill="currentColor" /></>,
 };
 
@@ -644,14 +689,15 @@ function Home({ films, defs, recipes, filters, home, setHome, onOpen, onSeeAll, 
   const eligible = useMemo(() => films.filter(filterTest(defs, filters)), [films, defs, filters]);
   const pick = pickFrom(eligible, home.date, home.pick);
   const extra = home.more || 0;
+  const [deal] = usePref("shelf-deal-count", 6);
   // Double features are a fixture now (they used to have a tab): always the first shelf.
   const shelves = useMemo(() => {
     const seed = hashStr(home.date) + home.seed * 104729;
     const pairs = recipes.find((r) => r.kind === "pairs");
-    const rest = dealShelves(recipes.filter((r) => r.kind !== "pairs"), seed, 6 + extra * 3);
+    const rest = dealShelves(recipes.filter((r) => r.kind !== "pairs"), seed, deal + extra * 3);
     return pairs ? [...dealShelves([pairs], seed, 1), ...rest] : rest;
-  }, [recipes, home.date, home.seed, extra]);
-  const canDealMore = shelves.filter((s) => s.kind !== "pairs").length === 6 + extra * 3 && recipes.length > shelves.length;
+  }, [recipes, home.date, home.seed, extra, deal]);
+  const canDealMore = shelves.filter((s) => s.kind !== "pairs").length === deal + extra * 3 && recipes.length > shelves.length;
   const labels = activeFilterLabels(defs, filters);
   const filterLabel = labels.length === 0 ? "Filters" : labels.length === 1 ? labels[0] : labels[0] + " +" + (labels.length - 1);
   const [logoFailed, setLogoFailed] = useState(false);
@@ -836,7 +882,12 @@ const libGroups = (films, customTags) => {
   const countries = atLeast(2, films.map((f) => f.countries));
   const directors = atLeast(2, films.map((f) => f.directors));
   return [
-    ["format", "Format", [...formats.map((x) => [x, x, has((c) => c.format === x)]), ["none", "Not filled in", (f) => !f.copies.some((c) => c.format)]]],
+    ["format", "Format", [
+      ...formats.map((x) => [x, x, has((c) => c.format === x)]),
+      ...(films.some((f) => f.hasDigital) ? [["hasdigital", "Has digital", (f) => f.hasDigital], ["digitalonly", "Digital only", (f) => f.digitalOnly]] : []),
+      ...(films.some((f) => f.unredeemed) ? [["unredeemed", "Unredeemed code", (f) => f.unredeemed]] : []),
+      ["none", "Not filled in", (f) => !f.copies.some((c) => c.format)],
+    ]],
     ["package", "Packaging", pkgs.map((x) => [x, x, has((c) => c.package === x)])],
     ["label", "Distributor", labels.map((x) => [x, x, has((c) => c.label === x)])],
     ["tag", "Tags", [...Object.entries(TAGS), ...customTags.map((t) => [t, t])].map(([k, l]) => [k, l, (f) => f.tags.includes(k)])],
@@ -880,9 +931,16 @@ const SORTS = {
   long: ["Longest runtime", (a, b) => (b.runtime || 0) - (a.runtime || 0)],
 };
 
-function Library({ films, customTags, extra, setExtra, onOpen, onAdd, onSettings, searchFocus, onFocused }) {
-  const groups = useMemo(() => libGroups(films, customTags), [films, customTags]);
+function Library({ films: allFilms, customTags, extra, setExtra, onOpen, onAdd, searchFocus, onFocused }) {
+  // Preferences: digital-only films and films tagged Sell can stay out of the Library unless you go looking.
+  const [countDigital] = usePref("shelf-count-digital", false);
+  const [hideSell] = usePref("shelf-hide-sell", false);
   const [sel, setSel] = useState({});
+  const wantsDigital = (sel.format || []).some((k) => k === "digitalonly" || k === "hasdigital" || /^Digital/.test(k));
+  const wantsSell = (sel.tag || []).includes("sell");
+  const films = useMemo(() => allFilms.filter((f) => (countDigital || wantsDigital || !f.digitalOnly) && (!hideSell || wantsSell || !f.tags.includes("sell"))),
+    [allFilms, countDigital, wantsDigital, hideSell, wantsSell]);
+  const groups = useMemo(() => libGroups(allFilms, customTags), [allFilms, customTags]);
   const active = useMemo(() => activeOpts(groups, sel), [groups, sel]);
   const nActive = active.reduce((n, g) => n + g[2].length, 0);
   const toggle = (g, k) => setSel((s) => {
@@ -894,11 +952,11 @@ function Library({ films, customTags, extra, setExtra, onOpen, onAdd, onSettings
   useBodyLock(filtering);
   const [q, setQ] = useState("");
   const byRecent = isOn("shelf", "recent");
-  const [sort, setSort] = useState(() => (SORTS[store.get("shelf-sort")] ? store.get("shelf-sort") : "az"));
-  const [view, setView] = useState(() => store.get("shelf-libview") || "wall");
-  const [cols, setCols] = useState(() => +store.get("shelf-wallcols") || 4);
-  const changeView = (v) => { setView(v); store.set("shelf-libview", v); };
-  const changeCols = (n) => { const c = Math.max(2, Math.min(6, n)); setCols(c); store.set("shelf-wallcols", String(c)); };
+  const [sortPref, setSort] = usePref("shelf-sort", "az");
+  const sort = SORTS[sortPref] ? sortPref : "az";
+  const [view, changeView] = usePref("shelf-libview", "wall");
+  const [cols, setCols] = usePref("shelf-wallcols", 4);
+  const changeCols = (n) => setCols(Math.max(2, Math.min(6, n)));
   const pinch = useRef(null);
   const onTouchStart = (e) => {
     if (e.touches.length === 2) pinch.current = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
@@ -955,7 +1013,6 @@ function Library({ films, customTags, extra, setExtra, onOpen, onAdd, onSettings
               <Icon d={view === "wall" ? I.list : I.wall} size={22} sw={1.9} />
             </button>
             <button className="icon-btn" onClick={onAdd} aria-label="Add a film"><Icon d={I.plus} size={24} sw={2.2} /></button>
-            <button className="icon-btn" onClick={onSettings} aria-label="Backup and tags"><Icon d={I.gear} size={21} sw={1.9} /></button>
           </div>
         </div>
         <label className="search">
@@ -989,7 +1046,7 @@ function Library({ films, customTags, extra, setExtra, onOpen, onAdd, onSettings
           )}
           <label className="sort">
             {SORTS[byRecent ? "recent" : sort][0]}<Icon d={I.down} size={12} sw={2.6} />
-            <select value={sort} onChange={(e) => { setSort(e.target.value); store.set("shelf-sort", e.target.value); }} aria-label="Sort by">
+            <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sort by">
               {Object.entries(SORTS).map(([k, [l]]) => <option key={k} value={k}>{l}</option>)}
             </select>
           </label>
@@ -1038,7 +1095,7 @@ function Library({ films, customTags, extra, setExtra, onOpen, onAdd, onSettings
       </div>
 
       {filtering && (
-        <LibraryFilter films={extra ? films.filter(extra.test) : films} groups={groups} sel={sel} active={active}
+        <LibraryFilter films={extra ? allFilms.filter(extra.test) : allFilms} groups={groups} sel={sel} active={active}
           onToggle={toggle} onReset={() => setSel({})} onClose={() => setFiltering(false)} />
       )}
 
@@ -1238,7 +1295,7 @@ function useSwipeBack(ref, onBack) {
       const dim = u.classList.contains("under") ? document.querySelector(".nav-dim") : null;
       const parts = [u, dim].filter(Boolean);
       if (done === "reset" || (x === 0 && !done)) {
-        parts.forEach((p) => { p.style.transition = done === "reset" ? "" : `transform ${t}, filter ${t}, opacity ${t}`; p.style.transform = ""; p.style.filter = ""; p.style.opacity = ""; });
+        parts.forEach((p) => { p.style.transition = done === "reset" ? "" : `transform ${t}, filter ${t}, opacity ${t}`; p.style.transform = ""; p.style.filter = ""; p.style.opacity = ""; p.style.visibility = ""; });
         if (done === "reset") uEl = null;
         else setTimeout(() => parts.forEach((p) => { p.style.transition = ""; }), 320);
         return;
@@ -1246,6 +1303,7 @@ function useSwipeBack(ref, onBack) {
       const k = Math.min(1, x / w);
       parts.forEach((p) => { p.style.transition = `transform ${t}, filter ${t}, opacity ${t}`; });
       u.style.transform = `translateX(${-28 * (1 - k)}%)`;
+      u.style.visibility = "visible";
       if (dim) dim.style.opacity = String(1 - k);
       else u.style.filter = `brightness(${0.7 + 0.3 * k})`;
     };
@@ -1377,6 +1435,319 @@ function ListPage({ nav = "in", below = false, entry, films, backLabel, onBack, 
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── YOU ────────────────────────────────────────────────────────────────
+// A page pushed onto the stack with a back button and swipe-back: the You tab's rows open these.
+function StackPage({ nav = "in", below = false, label, backLabel, onBack, children }) {
+  const ref = useRef(null);
+  const [mountedBelow] = useState(below);
+  useSwipeBack(ref, onBack);
+  return (
+    <div className={stackClass(nav, below, mountedBelow, " list-page")} ref={ref} role="dialog" aria-label={label} aria-hidden={below || undefined}>
+      <div className="film-inner">
+        <div className="list-bar">
+          <button className="back" onClick={() => onBack()}><Icon d={I.back} size={20} sw={2.4} /><span>{backLabel}</span></button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+const YouRow = ({ icon, label, value, dot, onClick, plain }) => (
+  <button className="you-row" onClick={onClick}>
+    <span className={"you-ic" + (plain ? " plain" : "")}><Icon d={icon} size={17} sw={2} /></span>
+    <span className="you-rb">
+      <span className="you-lbl">{label}</span>
+      {value != null && <span className="you-val tnum">{dot && <i className={"you-dot " + dot} />}{value}</span>}
+      <Icon d={I.chev} size={14} sw={2.6} />
+    </span>
+  </button>
+);
+
+function You({ films, want, programs, sync, onOpen, onPush }) {
+  const yr = String(thisYear());
+  const watchedThisYear = films.filter((f) => f.views.some((v) => v.startsWith(yr))).length;
+  const rated = films.filter((f) => f.rating != null);
+  const avg = rated.length ? rated.reduce((n, f) => n + f.rating, 0) / rated.length : null;
+  const recent = useMemo(() => films.flatMap((f) => f.views.map((d) => ({ d, f }))).sort((a, b) => b.d.localeCompare(a.d)).slice(0, 4), [films]);
+  const open = want.filter((w) => !w.bought);
+  const total = open.reduce((n, w) => n + (w.price || 0), 0);
+  const st = sync.status;
+  const syncVal = !sync.on ? "Off" : st.state === "error" ? "Not synced" : st.state === "syncing" ? "Syncing" : "Synced";
+  const syncDot = !sync.on ? "off" : st.state === "error" ? "bad" : st.state === "syncing" ? "busy" : "ok";
+  return (
+    <div className="page you">
+      <div className="page-head"><h1>You</h1></div>
+      <div className="you-id">
+        <span className="you-avatar" aria-hidden="true">J</span>
+        <span>
+          <strong>Jack</strong>
+          <span className="muted">@j_ck on Letterboxd</span>
+        </span>
+      </div>
+      <div className="strip you-strip">
+        <div><b>{films.length}</b><span>On the shelf</span></div>
+        <div><b>{watchedThisYear}</b><span>Watched in {yr}</span></div>
+        <div><b>{avg != null ? avg.toFixed(1) + "★" : "—"}</b><span>Your average</span></div>
+      </div>
+      {recent.length > 0 && (
+        <section className="you-recent">
+          <div className="dir-sub">
+            <span className="section-label caps">Recently watched</span>
+            <button className="link" style={{ fontSize: 15 }} onClick={() => onPush({ kind: "diary", label: "Diary" })}>Diary</button>
+          </div>
+          <div className="you-recent-row">
+            {recent.map(({ d, f }) => (
+              <button key={f.key + d} className="you-recent-item" onPointerDown={() => preloadFilm(f)} onClick={() => onOpen(f)} aria-label={`${f.name}, watched ${fmtDate(d)}`}>
+                <Poster path={f.posterPath} title={f.name} size="w185" />
+                <span className="tnum">{fmtDate(d).replace(/, \d{4}$/, "")}</span>
+                {f.rating != null && <span className="accent stars-sm">{stars(f.rating)}</span>}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+      <div className="you-group">
+        <YouRow icon={I.heart} label="Wishlist" value={open.length ? `${open.length}${total ? " · " + usd(total) : ""}` : "Empty"} onClick={() => onPush({ kind: "wishlist", label: "Wishlist" })} />
+        <YouRow icon={I.calendar} label="Diary" value={`${watchedThisYear} this year`} onClick={() => onPush({ kind: "diary", label: "Diary" })} />
+        <YouRow icon={I.doubles} label="Double features" value={programs.length ? `${programs.length} saved` : "None saved"} onClick={() => onPush({ kind: "doubles", label: "Double features", view: programs.length ? "saved" : "feed" })} />
+        <YouRow icon={I.stats} label="Stats" onClick={() => onPush({ kind: "stats", label: "Stats" })} />
+      </div>
+      <div>
+        <div className="section-label caps" style={{ padding: "0 4px 8px" }}>Settings</div>
+        <div className="you-group">
+          <YouRow plain icon={I.sliders} label="Preferences" onClick={() => onPush({ kind: "prefs", label: "Preferences" })} />
+          <YouRow plain icon={I.tag} label="Tags & labels" onClick={() => onPush({ kind: "tags", label: "Tags & labels" })} />
+          <YouRow plain icon={I.cloud} label="Backup & sync" value={syncVal} dot={syncDot} onClick={() => onPush({ kind: "backup", label: "Backup & sync" })} />
+        </div>
+      </div>
+      <p className="foot" style={{ textAlign: "center" }}>The Shelf · Film data and images from TMDB. This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
+    </div>
+  );
+}
+
+// Every watch: your shelf's history (with rewatches), what you log here, and an imported Letterboxd diary.
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const DOW = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+function Diary({ films, watchLog, onOpen }) {
+  const entries = useMemo(() => {
+    const out = [];
+    const owned = new Set(films.map((f) => f.key));
+    films.forEach((f) => {
+      const per = new Map(f.diary.map((e) => [e.date, e.rating]));
+      const last = f.views[f.views.length - 1];
+      f.views.forEach((d) => out.push({ id: f.key + "@" + d, date: d, title: f.name, year: f.year, dir: f.directors[0] || "", rating: per.get(d) ?? (d === last ? f.rating : null), film: f }));
+    });
+    Object.entries(watchLog).forEach(([k, v]) => {
+      if (owned.has(k)) return;
+      const i = k.lastIndexOf("|");
+      entriesOf(v).forEach((e) => out.push({ id: k + "@" + e.date, date: e.date, title: k.slice(0, i), year: k.slice(i + 1), dir: "", rating: e.rating ?? null, film: null }));
+    });
+    return out.sort((a, b) => b.date.localeCompare(a.date) || a.title.localeCompare(b.title));
+  }, [films, watchLog]);
+  const years = useMemo(() => [...new Set(entries.map((e) => e.date.slice(0, 4)))], [entries]);
+  const [year, setYear] = useState(() => years[0] || String(thisYear()));
+  const [view, setView] = usePref("shelf-diaryview", "list");
+  const shown = entries.filter((e) => e.date.startsWith(year));
+  const r = shown.filter((e) => e.rating != null);
+  const avg = r.length ? r.reduce((n, e) => n + e.rating, 0) / r.length : null;
+  const months = [];
+  shown.forEach((e) => { const m = e.date.slice(0, 7); const g = months[months.length - 1]; if (g && g.m === m) g.list.push(e); else months.push({ m, list: [e] }); });
+  const day = (d) => new Date(d + "T12:00:00");
+  return (
+    <div className="page diary">
+      <div className="page-head">
+        <h1>Diary</h1>
+        <label className="chip chip-x diary-year">
+          {year}<Icon d={I.down} size={11} sw={2.8} />
+          <select value={year} onChange={(e) => setYear(e.target.value)} aria-label="Year">
+            {years.map((y) => <option key={y} value={y}>{y}</option>)}
+          </select>
+        </label>
+      </div>
+      <div className="lib-bar">
+        <span className="lib-count tnum muted">{shown.length} {shown.length === 1 ? "watch" : "watches"}{avg != null ? ` · ${avg.toFixed(1)}★ average` : ""}</span>
+        <div className="seg diary-seg" role="group" aria-label="View">
+          <button className={view === "list" ? "on" : ""} aria-pressed={view === "list"} onClick={() => setView("list")}>List</button>
+          <button className={view === "grid" ? "on" : ""} aria-pressed={view === "grid"} onClick={() => setView("grid")}>Posters</button>
+        </div>
+      </div>
+      {shown.length === 0 && <div className="empty">Nothing logged in {year}.</div>}
+      <div className="diary-months">
+        {months.map(({ m, list }) => (
+          <section key={m}>
+            <div className="letter diary-month">{MONTHS[+m.slice(5) - 1]} {m.slice(0, 4)}</div>
+            {view === "list" ? list.map((e) => {
+              const Tag = e.film ? "button" : "div";
+              return (
+                <Tag key={e.id} className={"diary-row" + (e.film ? "" : " unowned")} {...(e.film ? { onClick: () => onOpen(e.film), onPointerDown: () => preloadFilm(e.film) } : {})}>
+                  <span className="diary-day"><b className="tnum">{+e.date.slice(8)}</b><i>{DOW[day(e.date).getDay()]}</i></span>
+                  {e.film ? <Poster path={e.film.posterPath} title={e.title} size="w92" className="thumb" /> : <span className="thumb poster-empty" aria-hidden="true" />}
+                  <span className="body">
+                    <span className="title">{e.title} <span className="muted tnum">{e.year}</span></span>
+                    <span className="meta"><span className="who">{e.film ? e.dir : "Not on your shelf"}</span>{e.rating != null && <span className="accent stars-sm" style={{ marginLeft: "auto" }}>{stars(e.rating)}</span>}</span>
+                  </span>
+                </Tag>
+              );
+            }) : (
+              <div className="wall diary-wall" style={{ "--cols": 4 }}>
+                {list.map((e) => e.film ? (
+                  <button key={e.id} onClick={() => onOpen(e.film)} onPointerDown={() => preloadFilm(e.film)} aria-label={`${e.title}, ${e.date}`}>
+                    <Poster path={e.film.posterPath} title={e.title} size="w185" />
+                    <span className="diary-badge tnum">{+e.date.slice(8)}</span>
+                  </button>
+                ) : (
+                  <div key={e.id} className="diary-tile-unowned"><span>{e.title}</span><span className="diary-badge tnum">{+e.date.slice(8)}</span></div>
+                ))}
+              </div>
+            )}
+          </section>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// iOS-style switch and value pickers for Preferences.
+const Switch = ({ on, onChange, label }) => (
+  <button className="pref-cell" role="switch" aria-checked={on} onClick={() => onChange(!on)}>
+    <span className="grow">{label}</span><span className={"switch" + (on ? " on" : "")}><i /></span>
+  </button>
+);
+const PickRow = ({ label, value, options, onChange }) => (
+  <label className="pref-cell">
+    <span className="grow">{label}</span>
+    <span className="pref-val">{options.find((o) => String(o[0]) === String(value))?.[1]}<Icon d={I.down} size={12} sw={2.6} /></span>
+    <select value={value} onChange={(e) => onChange(typeof options[0][0] === "number" ? +e.target.value : e.target.value)} aria-label={label}>
+      {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+    </select>
+  </label>
+);
+const SegRow = ({ label, value, options, onChange }) => (
+  <div className="pref-cell">
+    <span className="grow">{label}</span>
+    <div className="seg pref-seg" role="group" aria-label={label}>
+      {options.map(([v, l]) => <button key={v} className={value === v ? "on" : ""} aria-pressed={value === v} onClick={() => onChange(v)}>{l}</button>)}
+    </div>
+  </div>
+);
+function Prefs({ finish, setFinish }) {
+  const [view, setView] = usePref("shelf-libview", "wall");
+  const [sort, setSort] = usePref("shelf-sort", "az");
+  const [cols, setCols] = usePref("shelf-wallcols", 4);
+  const [randomPick, setRandomPick] = usePref("shelf-random-pick", false);
+  const [deal, setDeal] = usePref("shelf-deal-count", 6);
+  const [brk, setBrk] = usePref("shelf-break-min", 15);
+  const [countDigital, setCountDigital] = usePref("shelf-count-digital", false);
+  const [hideSell, setHideSell] = usePref("shelf-hide-sell", false);
+  return (
+    <div className="page prefs">
+      <div className="page-head"><h1>Preferences</h1></div>
+      <section>
+        <div className="section-label caps pref-sec">Library</div>
+        <div className="you-group">
+          <SegRow label="Opens as" value={view} options={[["wall", "Poster wall"], ["list", "List"]]} onChange={setView} />
+          <PickRow label="Sort by" value={SORTS[sort] ? sort : "az"} options={Object.entries(SORTS).map(([k, [l]]) => [k, l])} onChange={setSort} />
+          <SegRow label="Poster size" value={cols} options={[[3, "L"], [4, "M"], [5, "S"]]} onChange={setCols} />
+        </div>
+      </section>
+      <section>
+        <div className="section-label caps pref-sec">Home</div>
+        <div className="you-group">
+          <Switch label="New pick every time you open the app" on={randomPick} onChange={setRandomPick} />
+          <PickRow label="Shelves per deal" value={deal} options={[[3, "3"], [6, "6"], [9, "9"]]} onChange={setDeal} />
+        </div>
+        <p className="foot pref-foot">Off: Home keeps the same pick all day until you tap Pick another.</p>
+      </section>
+      <section>
+        <div className="section-label caps pref-sec">Double features</div>
+        <div className="you-group">
+          <PickRow label="Finish by" value={finish} options={FINISH} onChange={setFinish} />
+          <PickRow label="Break between films" value={brk} options={[[0, "None"], [10, "10 min"], [15, "15 min"], [20, "20 min"], [30, "30 min"]]} onChange={setBrk} />
+        </div>
+      </section>
+      <section>
+        <div className="section-label caps pref-sec">Collection</div>
+        <div className="you-group">
+          <Switch label="Count digital-only films" on={countDigital} onChange={setCountDigital} />
+          <Switch label="Hide films tagged Sell" on={hideSell} onChange={setHideSell} />
+        </div>
+        <p className="foot pref-foot">Off: films you only own digitally stay out of your shelf count, Home and Stats. Filter the Library by Digital only to see them.</p>
+      </section>
+    </div>
+  );
+}
+
+function TagsView({ films, D }) {
+  const [renaming, setRenaming] = useState(null);
+  const [newTag, setNewTag] = useState(null);
+  const count = (k) => films.filter((f) => f.tags.includes(k)).length;
+  const typed = D.labels.filter((l) => !KNOWN_LABELS.includes(l));
+  const addTag = () => { const t = (newTag || "").trim().replace(/\s+/g, " "); if (t && !TAGS[t]) D.addTag(t); setNewTag(null); };
+  return (
+    <div className="page prefs">
+      <div className="page-head"><h1>Tags &amp; labels</h1></div>
+      <section>
+        <div className="section-label caps pref-sec">Built-in tags</div>
+        <div className="you-group">
+          {Object.entries(TAGS).map(([k, l]) => <div className="pref-cell" key={k}><span className="grow">{l}</span><span className="muted tnum">{count(k)}</span></div>)}
+        </div>
+      </section>
+      <section>
+        <div className="dir-sub pref-sec"><span className="section-label caps">Your tags</span><button className="link" onClick={() => setNewTag("")}>New tag</button></div>
+        <div className="you-group">
+          {newTag != null && (
+            <form className="pref-cell" onSubmit={(e) => { e.preventDefault(); addTag(); }}>
+              <input className="field" style={{ height: 36, fontSize: 16 }} value={newTag} onChange={(e) => setNewTag(e.target.value)} autoFocus maxLength={32} placeholder="Tag name" aria-label="New tag name" onBlur={addTag} />
+            </form>
+          )}
+          {D.customTags.length === 0 && newTag == null && <div className="pref-cell muted" style={{ fontSize: 15 }}>None yet. Make one here or from any film's Tags.</div>}
+          {D.customTags.map((t) => (
+            <div className="pref-cell" key={t}>
+              {renaming && renaming.from === t ? (
+                <form className="grow" style={{ display: "flex", gap: 8 }} onSubmit={(e) => {
+                  e.preventDefault();
+                  const to = renaming.to.trim().replace(/\s+/g, " ");
+                  if (to && to !== t && !TAGS[to]) D.renameTag(t, to);
+                  setRenaming(null);
+                }}>
+                  <input className="field" style={{ height: 34, fontSize: 15 }} value={renaming.to} onChange={(e) => setRenaming({ from: t, to: e.target.value })} aria-label={"Rename " + t} autoFocus maxLength={32} />
+                  <button className="link" type="submit">Save</button>
+                </form>
+              ) : (
+                <>
+                  <span className="grow">{t} <span className="muted tnum">· {count(t)}</span></span>
+                  <button className="link" style={{ fontSize: 15 }} onClick={() => setRenaming({ from: t, to: t })}>Rename</button>
+                  <button style={{ fontSize: 15, color: "var(--danger)", marginLeft: 14 }} onClick={() => D.removeTag(t)}>Remove</button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+        <p className="foot pref-foot">Removing a tag takes it off every film.</p>
+      </section>
+      <section>
+        <div className="section-label caps pref-sec">Labels you've typed</div>
+        <div className="you-group">
+          {typed.length === 0 && <div className="pref-cell muted" style={{ fontSize: 15 }}>No custom labels. Add one from any copy's label chips.</div>}
+          {typed.map((l) => (
+            <div className="pref-cell" key={l}>
+              <span className="grow">{l} <span className="muted tnum">· {films.filter((f) => f.copies.some((c) => c.label === l)).length}</span></span>
+              <button style={{ fontSize: 15, color: "var(--danger)" }} onClick={() => D.removeLabel(l)}>Remove</button>
+            </div>
+          ))}
+        </div>
+        <p className="foot pref-foot">Removing a label takes it off the chip list. Copies already using it keep it.</p>
+      </section>
+      <section>
+        <div className="section-label caps pref-sec">Built-in labels</div>
+        <div className="tag-row">{KNOWN_LABELS.map((l) => <span key={l} className="chip">{l}</span>)}</div>
+        <p className="foot pref-foot">Always offered when you add a copy. Your most-used labels float to the front.</p>
+      </section>
     </div>
   );
 }
@@ -1716,9 +2087,9 @@ function FilmPage({ nav = "in", below = false, onPeek, wanted, film, films, ix, 
                 <span className={"fmt" + (c.format ? "" : " unknown")}>{c.format || "Format?"}</span>
                 <span className="grow" style={{ whiteSpace: "normal" }}>
                   {copyLine(c)}
-                  {(c.note || c.region || c.price != null || c.purchased) && (
+                  {(c.note || c.region || c.code || c.price != null || c.purchased) && (
                     <span className="muted" style={{ display: "block", fontSize: 13, marginTop: 2 }}>
-                      {[c.note, c.region && "Region " + c.region, c.purchased && fmtDate(c.purchased), c.price != null && c.price !== "" && money(c.price)].filter(Boolean).join(" · ")}
+                      {[c.note, c.region && "Region " + c.region, c.code && `${c.code} code${c.codeRedeemed ? ", redeemed" : ", not redeemed"}`, c.purchased && fmtDate(c.purchased), c.price != null && c.price !== "" && money(c.price)].filter(Boolean).join(" · ")}
                     </span>
                   )}
                 </span>
@@ -1976,7 +2347,9 @@ function CopySheet({ film, copy, labels, onNewLabel, onSave, onClose }) {
     const n = parseFloat(String(x.price).replace(/[$,]/g, ""));
     if (isNaN(n)) delete out.price; else out.price = n;
     if (!out.purchased) delete out.purchased;
-    if (!out.region) delete out.region;
+    if (!out.region || isDigital(out)) delete out.region;
+    if (isDigital(out)) { out.package = "Standard"; delete out.code; delete out.codeRedeemed; }
+    if (!out.code) { delete out.code; delete out.codeRedeemed; }
     return out;
   };
   const others = film.copies.map((x) => (x.id.startsWith("s") ? { ...x, id: newId() } : x));
@@ -2000,7 +2373,7 @@ function CopySheet({ film, copy, labels, onNewLabel, onSave, onClose }) {
       foot={!isNew && <button className="btn btn-outline" style={{ color: "var(--danger)" }} onClick={remove}>Delete this copy</button>}>
       <div className="muted" style={{ fontSize: 14, marginTop: -4 }}>{film.name} ({film.year})</div>
       <div><span className="field-label">Format</span><Chips k="format" opts={FORMATS} allowNone /></div>
-      <div><span className="field-label">Package</span><Chips k="package" opts={PACKAGES} /></div>
+      {isDigital(c) ? null : <div><span className="field-label">Package</span><Chips k="package" opts={PACKAGES} /></div>}
       <div>
         <span className="field-label">Label or distributor</span>
         <div className="tag-row">
@@ -2027,7 +2400,20 @@ function CopySheet({ film, copy, labels, onNewLabel, onSave, onClose }) {
           )}
         </div>
       </div>
-      <div><span className="field-label">Region</span><Chips k="region" opts={REGIONS} allowNone /></div>
+      {isDigital(c) ? null : <div><span className="field-label">Region</span><Chips k="region" opts={REGIONS} allowNone /></div>}
+      {c.format && !isDigital(c) && (
+        <div>
+          <span className="field-label">Digital code in the case</span>
+          <div className="tag-row">
+            <Chips k="code" opts={CODE_QUALITIES} allowNone />
+            {c.code && (
+              <button type="button" className={"chip" + (c.codeRedeemed ? " on" : "")} aria-pressed={!!c.codeRedeemed} onClick={() => set("codeRedeemed", !c.codeRedeemed)}>
+                {c.codeRedeemed ? "Redeemed" : "Not redeemed"}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       <div style={{ display: "flex", gap: 10 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <label className="field-label" htmlFor="copy-date">Bought on</label>
@@ -2289,7 +2675,7 @@ function Stats({ films, onPerson, onLabel }) {
       almost: series.filter((c) => c.have >= 2 && c.missing.length > 0).sort((a, b) => b.have / b.total - a.have / a.total).slice(0, 5),
       editions: films.filter((f) => f.special).length,
       withCopies: films.filter((f) => f.copies.length && !f.copiesSuggested).length,
-      formats: ["4K", "Blu-ray", "DVD", "Other"].map((fm) => [fm, films.reduce((a, f) => a + f.copies.filter((c) => c.format === fm).length, 0)]).filter(([, n]) => n),
+      formats: FORMATS.map((fm) => [fm, films.reduce((a, f) => a + f.copies.filter((c) => c.format === fm).length, 0)]).filter(([, n]) => n),
       labels: tally((f) => [...new Set(f.copies.map((c) => c.label).filter(Boolean))]).slice(0, 6),
       priced: films.flatMap((f) => f.copies).filter((c) => c.price != null && c.price !== ""),
       k4: films.filter((f) => f.badges.includes("4K")).length,
@@ -2419,7 +2805,8 @@ const FINISH = [[22, "10 PM"], [23, "11 PM"], [24, "Midnight"], [25, "1 AM"]];
 const runtimeShort = (m) => `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`;
 
 function PairCard({ p, finish, onOpen }) {
-  const plan = nightPlan(p.a, p.b, finish);
+  const [brk] = usePref("shelf-break-min", 15);
+  const plan = nightPlan(p.a, p.b, finish, brk);
   return (
     <button className="dbl-card" onClick={() => onOpen(p)}>
       <div className="dbl-posters">
@@ -2578,7 +2965,8 @@ function NightSheet({ pair, programs, finish, setFinish, onSave, onDelete, onLog
   const [note, setNote] = useState(existing?.note || "");
   const [logged, setLogged] = useState(false);
   const [first, second] = order;
-  const plan = nightPlan(first, second, finish);
+  const [brk] = usePref("shelf-break-min", 15);
+  const plan = nightPlan(first, second, finish, brk);
   const save = () => onSave({ id: existing?.id || newId(), a: first.key, b: second.key, title: title.trim(), note: note.trim() });
   return (
     <Sheet title="Double feature" onClose={onClose} tall
@@ -2614,7 +3002,7 @@ function NightSheet({ pair, programs, finish, setFinish, onSave, onDelete, onLog
       {plan && (
         <section className="stat-section" style={{ gap: 0 }}>
           <div className="section-label">The night</div>
-          <div className="list-row"><span className="grow muted">Running time, with a 15-minute break</span><span className="tnum">{runtimeShort(plan.total)}</span></div>
+          <div className="list-row"><span className="grow muted">{brk ? `Running time, with a ${brk}-minute break` : "Running time, back to back"}</span><span className="tnum">{runtimeShort(plan.total)}</span></div>
           <div className="list-row">
             <span className="grow muted">Finish by</span>
             <label className="sort">
@@ -2697,13 +3085,38 @@ function SyncPanel({ sync }) {
   );
 }
 
-function Backup({ D, sync, films, onBuy, bare }) {
-  const [renaming, setRenaming] = useState(null);
+function Backup({ D, sync, films, bare }) {
   const fileRef = useRef(null);
+  const lbRef = useRef(null);
   const [msg, setMsg] = useState("");
-  const [adding, setAdding] = useState(false);
-  const [nf, setNf] = useState(""); const [ny, setNy] = useState(""); const [nl, setNl] = useState("");
-  const owned = useMemo(() => new Set(films.map((f) => f.name + "|" + f.year)), [films]);
+  const [lbMsg, setLbMsg] = useState("");
+  const doDiary = (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    e.target.value = "";
+    const r = new FileReader();
+    r.onload = () => {
+      const rows = parseCSV(String(r.result || ""));
+      const head = (rows.shift() || []).map((h) => h.trim().toLowerCase());
+      const col = (n) => head.indexOf(n);
+      const iName = col("name"), iYear = col("year"), iRating = col("rating"), iWatched = col("watched date"), iDate = col("date");
+      if (iName < 0 || iWatched < 0) { setLbMsg("That isn't diary.csv. It's the file with a Watched Date column, inside the Letterboxd export."); return; }
+      const owned = new Map(films.map((f) => [(f.name + "|" + f.year).toLowerCase(), f.key]));
+      const byKey = {};
+      let n = 0, mine = 0;
+      rows.forEach((row) => {
+        const name = (row[iName] || "").trim(), year = (row[iYear] || "").trim(), date = (row[iWatched] || row[iDate] || "").trim();
+        if (!name || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+        const key = owned.get((name + "|" + year).toLowerCase()) || name + "|" + year;
+        const rating = parseFloat(row[iRating]);
+        (byKey[key] ||= []).push(Number.isFinite(rating) ? { date, rating } : { date });
+        n++; if (owned.has((name + "|" + year).toLowerCase())) mine++;
+      });
+      if (!n) { setLbMsg("No diary entries found in that file."); return; }
+      D.importDiary(byKey);
+      setLbMsg(`Imported ${n.toLocaleString()} diary entries: ${mine.toLocaleString()} for films on your shelf, ${(n - mine).toLocaleString()} for films you don't own. They're in your Diary now.`);
+    };
+    r.readAsText(file);
+  };
 
   const doExport = () => {
     const blob = new Blob([JSON.stringify(D.exportPayload(), null, 2)], { type: "application/json" });
@@ -2720,15 +3133,6 @@ function Backup({ D, sync, films, onBuy, bare }) {
     r.readAsText(file);
     e.target.value = "";
   };
-  const want = D.want;
-  const toggle = (i) => D.setWant(want.map((w, j) => (j === i ? { ...w, bought: !w.bought } : w)));
-  const remove = (i) => D.setWant(want.filter((_, j) => j !== i));
-  const add = () => {
-    if (!nf.trim()) return;
-    D.setWant([{ film: nf.trim(), year: ny.trim(), label: nl.trim(), note: "", kind: "new", bought: false }, ...want]);
-    setNf(""); setNy(""); setNl(""); setAdding(false);
-  };
-  const kinds = { upgrade: "Upgrade", new: "New", gap: "Gap" };
   const row = (label, n) => <div className="list-row"><span className="grow muted">{label}</span><span className="tnum">{n}</span></div>;
 
   return (
@@ -2741,7 +3145,8 @@ function Backup({ D, sync, films, onBuy, bare }) {
         {row("Tagged", Object.values(D.userData).filter((u) => u.tags && u.tags.length).length)}
         {row("Custom posters", Object.values(D.userData).filter((u) => u.poster).length)}
         {row("Films with copy details", Object.values(D.userData).filter((u) => u.copies && u.copies.length).length)}
-        {row("Watches logged here", Object.values(D.watchLog).reduce((n, v) => n + entriesOf(v).length, 0))}
+        {row("Watches logged here or imported", Object.values(D.watchLog).reduce((n, v) => n + entriesOf(v).length, 0))}
+        {row("Wishlist", D.want.filter((w) => !w.bought).length)}
         {row("Double features saved", D.programs.length)}
       </section>
 
@@ -2756,33 +3161,12 @@ function Backup({ D, sync, films, onBuy, bare }) {
           : "Tags, notes, poster choices, double features, films added here, the wishlist and watch log live only on this device. Export now and then, and always before clearing Safari.")}</span>
       </section>
 
-      <section className="stat-section" style={{ gap: 0 }}>
-        <h2 style={{ marginBottom: 6 }}>Your tags</h2>
-        {Object.entries(TAGS).map(([k, l]) => (
-          <div className="list-row" key={k}><span className="grow">{l}</span><span className="muted tnum">{films.filter((f) => f.tags.includes(k)).length}</span></div>
-        ))}
-        {D.customTags.map((t) => (
-          <div className="list-row" key={t}>
-            {renaming && renaming.from === t ? (
-              <form className="grow" style={{ display: "flex", gap: 8 }} onSubmit={(e) => {
-                e.preventDefault();
-                const to = renaming.to.trim().replace(/\s+/g, " ");
-                if (to && to !== t && !TAGS[to]) D.renameTag(t, to);
-                setRenaming(null);
-              }}>
-                <input className="field" style={{ height: 34, fontSize: 15 }} value={renaming.to} onChange={(e) => setRenaming({ from: t, to: e.target.value })} aria-label={"Rename " + t} autoFocus maxLength={32} />
-                <button className="link" type="submit">Save</button>
-              </form>
-            ) : (
-              <>
-                <span className="grow">{t} <span className="muted tnum">· {films.filter((f) => f.tags.includes(t)).length}</span></span>
-                <button className="link" style={{ fontSize: 14 }} onClick={() => setRenaming({ from: t, to: t })}>Rename</button>
-                <button style={{ fontSize: 14, color: "var(--danger)" }} onClick={() => D.removeTag(t)}>Remove</button>
-              </>
-            )}
-          </div>
-        ))}
-        <span className="muted" style={{ fontSize: 13, marginTop: 8 }}>{D.customTags.length ? "Removing a tag takes it off every film." : "Make your own tags from any film's page, under Tags."}</span>
+      <section className="stat-section">
+        <h2>Letterboxd diary</h2>
+        <p className="muted sync-note">Bring in your whole diary, including films you don't own. On Letterboxd: Settings, Data, Export your data. Unzip it in Files, then choose <b>diary.csv</b> here.</p>
+        <button className="btn btn-outline" style={{ height: 46 }} onClick={() => lbRef.current.click()}>Import diary.csv</button>
+        <input ref={lbRef} type="file" accept=".csv,text/csv" onChange={doDiary} style={{ display: "none" }} />
+        {lbMsg && <span className="muted" style={{ fontSize: 13, lineHeight: 1.45 }}>{lbMsg}</span>}
       </section>
 
       <p className="foot">Film data and images from TMDB. This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
@@ -2791,10 +3175,10 @@ function Backup({ D, sync, films, onBuy, bare }) {
 }
 
 // Hidden tabs stay built but skip re-rendering unless their own inputs change.
-const HomeTab = memo(Home), LibraryTab = memo(Library), StatsTab = memo(Stats), WishlistTab = memo(Wishlist);
+const HomeTab = memo(Home), LibraryTab = memo(Library), YouTab = memo(You);
 
 // ─── ROOT ───────────────────────────────────────────────────────────────
-const TABS = [["home", "Home", I.home], ["library", "Library", I.library], ["wishlist", "Wishlist", I.heart], ["stats", "Stats", I.stats]];
+const TABS = [["home", "Home", I.home], ["library", "Library", I.library], ["you", "You", I.you]];
 const TAB_NAMES = Object.fromEntries(TABS.map(([k, l]) => [k, l]));
 
 export default function App() {
@@ -2809,6 +3193,8 @@ export default function App() {
   const [searchFocus, setSearchFocus] = useState(0);
   const [filters, setFilters] = useStored("shelf-filters", {});
   const [home, setHome] = useHomeState();
+  // Preference: a fresh Home pick every time the app opens, instead of one pick per day.
+  useEffect(() => { if (getPref("shelf-random-pick", false)) setHome((h) => ({ ...h, pick: h.pick + 1 + Math.floor(Math.random() * 7) })); }, []);
 
   const films = useMemo(() => {
     const seedKeys = new Set(SEED_COLLECTION.map(fkey));
@@ -2816,9 +3202,13 @@ export default function App() {
   }, [D.added, D.userData, D.watchLog]);
   useMemo(() => { [...films].sort((a, b) => b.recency - a.recency).forEach((f, i) => { f.recentRank = i + 1; }); }, [films]);
   const byKey = useMemo(() => new Map(films.map((f) => [f.key, f])), [films]);
+  // "The shelf" for counts, Home and Stats: digital-only films join only if you say so in Preferences.
+  const [countDigital] = usePref("shelf-count-digital", false);
+  const [hideSell] = usePref("shelf-hide-sell", false);
+  const shelfFilms = useMemo(() => films.filter((f) => (countDigital || !f.digitalOnly) && (!hideSell || !f.tags.includes("sell"))), [films, countDigital, hideSell]);
   const ix = useMemo(() => pairIndex(films), [films]);
   const homePairs = useMemo(() => bestPairs(ix, 60), [ix]);
-  const recipes = useMemo(() => buildRecipes(films, D.customTags, homePairs), [films, D.customTags, homePairs]);
+  const recipes = useMemo(() => buildRecipes(shelfFilms, D.customTags, homePairs), [shelfFilms, D.customTags, homePairs]);
   const [wantOpen, setWantOpen] = useState(null); // a want's id, for its sheet
   const [peek, setPeek] = useState(null); // a greyed-out filmography film
   const wanted = useMemo(() => new Set(D.want.filter((w) => !w.bought).map((w) => wantId(w).toLowerCase())), [D.want]);
@@ -2828,8 +3218,13 @@ export default function App() {
     D.importWants(IMPORTED_WANTS);
     store.set("shelf-import-" + IMPORT_ID, "1");
   }, []);
+  useEffect(() => {
+    if (store.get("shelf-import-" + IMPORT2_ID)) return;
+    D.importWants(IMPORT2_PATCH, { addNew: false }); // fill blanks on wants you already have; never re-add removed ones
+    D.importWants(IMPORT2_ADD);
+    store.set("shelf-import-" + IMPORT2_ID, "1");
+  }, []);
   const [night, setNight] = useState(null);
-  const [settings, setSettings] = useState(false);
   const [finish, setFinish] = useStored("shelf-finishby", 23);
   const defs = useMemo(() => makeFilters(D.customTags), [D.customTags]);
   const allTags = useMemo(() => [...Object.entries(TAGS), ...D.customTags.map((t) => [t, t])], [D.customTags]);
@@ -2862,7 +3257,7 @@ export default function App() {
   const top = stack.length ? stack[stack.length - 1] : null;
   const entryName = (e) => (typeof e === "string" ? byKey.get(e)?.name || "Back" : e.label);
   const listSeq = useRef(0);
-  useBodyLock(!!top || !!wantOpen || !!peek || !!adding || !!picking || showFilters || !!copyEdit || !!detailsFor || !!night || settings);
+  useBodyLock(!!top || !!wantOpen || !!peek || !!adding || !!picking || showFilters || !!copyEdit || !!detailsFor || !!night);
 
   // Film pages use a plain iOS-style push: the page slides in the instant you tap (no screen snapshot
   // to wait for, unlike a view transition) and slides back out to the right.
@@ -2941,7 +3336,7 @@ export default function App() {
   const onOpenWantE = useEvent((w) => setWantOpen(wantId(w)));
   const onNewWantE = useEvent(() => setWantOpen("new"));
   const onAddE = useEvent(() => setAdding({}));
-  const onSettingsE = useEvent(() => setSettings(true));
+  const onPushE = useEvent(pushList);
   const onFocusedE = useEvent(() => setSearchFocus(0));
   const onPersonE = useEvent(onPerson);
   const onLabelE = useEvent((l) => pushList({ kind: "label", label: l, test: (f) => f.copies.some((c) => c.label === l) }));
@@ -2952,16 +3347,15 @@ export default function App() {
           is on top, like an iOS navigation stack, and glides back when you go back. */}
       <div className={"under" + (covered ? " covered" : "")}>
       <main hidden={tab !== "home"}>
-        <HomeTab films={films} defs={defs} recipes={recipes} filters={filters} home={home} setHome={setHome} active={tab === "home"}
+        <HomeTab films={shelfFilms} defs={defs} recipes={recipes} filters={filters} home={home} setHome={setHome} active={tab === "home"}
           onOpen={openFilmE} onSeeAll={onSeeAllE} onSearch={onSearchE} onFilters={onFiltersE} onPair={setNight} onDoubles={onDoublesE} saved={D.programs.length} />
       </main>
       {/* Tabs stay built in the background, so switching back is instant and keeps your place. */}
-      <main hidden={tab !== "library"}><LibraryTab films={films} customTags={D.customTags} extra={extra} setExtra={setExtra} onOpen={openFilmE} onAdd={onAddE} onSettings={onSettingsE} searchFocus={searchFocus} onFocused={onFocusedE} /></main>
-      <main hidden={tab !== "stats"}><StatsTab films={films} onPerson={onPersonE} onLabel={onLabelE} /></main>
-      <main hidden={tab !== "wishlist"}><WishlistTab want={D.want} films={films} onOpenWant={onOpenWantE} onNew={onNewWantE} /></main>
+      <main hidden={tab !== "library"}><LibraryTab films={films} customTags={D.customTags} extra={extra} setExtra={setExtra} onOpen={openFilmE} onAdd={onAddE} searchFocus={searchFocus} onFocused={onFocusedE} /></main>
+      <main hidden={tab !== "you"}><YouTab films={shelfFilms} want={D.want} programs={D.programs} sync={sync} onOpen={openFilmE} onPush={onPushE} /></main>
       </div>
       <div className={"nav-dim" + (covered ? " on" : "")} aria-hidden="true" />
-      {(tab === "library" || tab === "wishlist" || tab === "stats") && !top && <BackToTop key={tab} />}
+      {tab === "library" && !top && <BackToTop key={tab} />}
 
       {stack.slice(-2).map((e, i, arr) => {
         const isTop = i === arr.length - 1;
@@ -2969,6 +3363,13 @@ export default function App() {
         const label = depth > 0 ? entryName(stack[depth - 1]) : TAB_NAMES[tab];
         const nav = isTop && leaving ? "leaving" : "in";
         const below = !isTop && !leaving;
+        const page = (children) => <StackPage key={depth + ":" + e.id} nav={nav} below={below} label={e.label} backLabel={label} onBack={back}>{children}</StackPage>;
+        if (typeof e !== "string" && e.kind === "wishlist") return page(<Wishlist want={D.want} films={films} onOpenWant={onOpenWantE} onNew={onNewWantE} />);
+        if (typeof e !== "string" && e.kind === "diary") return page(<Diary films={films} watchLog={D.watchLog} onOpen={openFilm} />);
+        if (typeof e !== "string" && e.kind === "stats") return page(<Stats films={shelfFilms} onPerson={onPerson} onLabel={onLabelE} />);
+        if (typeof e !== "string" && e.kind === "prefs") return page(<Prefs finish={finish} setFinish={setFinish} />);
+        if (typeof e !== "string" && e.kind === "tags") return page(<TagsView films={films} D={D} />);
+        if (typeof e !== "string" && e.kind === "backup") return page(<div className="page"><div className="page-head"><h1>Backup &amp; sync</h1></div><Backup bare D={D} sync={sync} films={films} /></div>);
         if (typeof e !== "string" && e.kind === "doubles") {
           return <DoublesPage key={depth + ":" + e.id} nav={nav} below={below} entry={e} films={films} ix={ix} programs={D.programs} onNight={setNight} finish={finish} backLabel={label} onBack={back} />;
         }
@@ -2998,11 +3399,6 @@ export default function App() {
         <NightSheet key={night.key} pair={night} programs={D.programs} finish={finish} setFinish={setFinish}
           onSave={D.saveProgram} onDelete={D.removeProgram} onLog={logBoth}
           onOpenFilm={(f) => { setNight(null); openFilm(f); }} onClose={() => setNight(null)} />
-      )}
-      {settings && (
-        <Sheet title="Backup & lists" onClose={() => setSettings(false)} tall>
-          <Backup bare D={D} sync={sync} films={films} onBuy={(w) => { setSettings(false); setAdding({ name: w.film, year: w.year, label: w.label }); }} />
-        </Sheet>
       )}
       {copyEdit && byKey.get(copyEdit.key) && (
         <CopySheet film={byKey.get(copyEdit.key)} copy={copyEdit.copy} labels={labels} onNewLabel={D.addLabel} onClose={() => setCopyEdit(null)}
