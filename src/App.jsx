@@ -363,6 +363,7 @@ function Sheet({ title, onClose, left, right, tall, children, foot, sub }) {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [close]);
+  const onCloseRef = useRef(onClose); onCloseRef.current = onClose;
   // Drag down to dismiss, from the header only (grabber and title bar). The body just scrolls,
   // so scrolling back up through a form can never close the sheet by accident. The sheet trails
   // your finger with some resistance and needs a real pull (or a hard flick) to let go.
@@ -385,14 +386,14 @@ function Sheet({ title, onClose, left, right, tall, children, foot, sub }) {
       el.style.transform = `translateY(${dy}px)`;
     };
     const end = () => {
-      if (mode !== "drag") { mode = null; return; }
+      if (mode !== "drag") { mode = null; if (el.style.transform && !el.parentElement.classList.contains("leaving")) { el.style.transition = "transform 0.3s cubic-bezier(.2,.9,.3,1)"; el.style.transform = ""; } return; }
       mode = null;
       const fast = raw / Math.max(1, Date.now() - t0) > 1 && raw > 90;
       el.style.transition = "transform 0.3s cubic-bezier(.2,.9,.3,1)";
       if (raw > Math.max(170, el.offsetHeight * 0.33) || fast) {
         el.style.transform = "translateY(100%)";
         el.parentElement.classList.add("leaving");
-        setTimeout(onClose, 260);
+        setTimeout(() => onCloseRef.current(), 260);
       } else el.style.transform = "";
     };
     el.addEventListener("touchstart", start, { passive: true });
@@ -405,7 +406,7 @@ function Sheet({ title, onClose, left, right, tall, children, foot, sub }) {
       el.removeEventListener("touchend", end);
       el.removeEventListener("touchcancel", end);
     };
-  }, [onClose]);
+  }, []);
   // Rendered at the top of the page, so a sheet opened from inside a film page still covers the tab bar.
   return createPortal(
     <div className={"scrim" + (leaving ? " leaving" : "")} onClick={close}>
@@ -1098,11 +1099,14 @@ function FilmPage({ film, films, ix, onNight, onBuildAround, allTags, backLabel,
     if (t) { onAddTag(t); if (!film.tags.includes(t)) onUpdate(film.key, { tags: [...film.tags, t] }); }
     setNewTag(null);
   };
-  // Swipe right anywhere on the page to go back, like iOS.
+  // Swipe right anywhere on the page to go back, like iOS. The listeners are attached once and read
+  // the latest onBack through a ref: re-attaching them on every render (a photo loading, a sync check)
+  // could drop a swipe midway and leave the page stuck half off screen.
+  const onBackRef = useRef(onBack); onBackRef.current = onBack;
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    let sx = 0, sy = 0, t0 = 0, mode = null, dx = 0;
+    let sx = 0, sy = 0, t0 = 0, mode = null, dx = 0, leaving = false;
     const set = (x, animate) => {
       el.style.transition = animate ? "transform 0.25s cubic-bezier(.2,.9,.3,1), box-shadow 0.25s" : "none";
       el.style.transform = x ? `translateX(${x}px)` : "";
@@ -1125,13 +1129,18 @@ function FilmPage({ film, films, ix, onNight, onBuildAround, allTags, backLabel,
       set(dx, false);
     };
     const end = () => {
-      if (mode !== "h") { mode = null; return; }
+      if (mode !== "h") {
+        mode = null;
+        if (!leaving && el.style.transform) set(0, true); // never leave the page parked off to the side
+        return;
+      }
       mode = null;
       const w = el.clientWidth || window.innerWidth;
       const fast = dx / Math.max(1, Date.now() - t0) > 0.5 && dx > 40;
       if (dx > w * 0.33 || fast) {
+        leaving = true;
         set(w, true);
-        setTimeout(() => { set(0, false); onBack({ swiped: true }); }, 220);
+        setTimeout(() => { set(0, false); leaving = false; onBackRef.current({ swiped: true }); }, 220);
       } else set(0, true);
     };
     el.addEventListener("touchstart", start, { passive: true });
@@ -1144,7 +1153,7 @@ function FilmPage({ film, films, ix, onNight, onBuildAround, allTags, backLabel,
       el.removeEventListener("touchend", end);
       el.removeEventListener("touchcancel", end);
     };
-  }, [onBack]);
+  }, []);
   const confirmCopies = () => onUpdate(film.key, { copies: film.copies.map(({ id, ...c }) => ({ ...c, id: newId() })) });
 
   const today = todayISO();
