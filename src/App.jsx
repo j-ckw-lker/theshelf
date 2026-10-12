@@ -1055,49 +1055,60 @@ function DirectorCard({ film, films, onOpen, onPerson }) {
   const info = useDirector(film);
   const [open, setOpen] = useState(false);
   useEffect(() => setOpen(false), [film.key]);
-  const theirs = films.filter((f) => f.directors.includes(name));
+  const theirs = films.filter((f) => f.directors.includes(name)).sort((a, b) => a.yearNum - b.yearNum || a.sortKey.localeCompare(b.sortKey));
   const rated = theirs.filter((f) => f.rating != null);
   const avg = rated.length ? rated.reduce((n, f) => n + f.rating, 0) / rated.length : null;
+  const seen = theirs.filter((f) => f.lastWatched).length;
   const rank = META.rankedDirectors.findIndex((d) => d.name === name);
-  const others = theirs.filter((f) => f.key !== film.key).sort((a, b) => b.yearNum - a.yearNum);
   const year = (d) => (d ? d.slice(0, 4) : null);
   const dates = info?.born ? (info.died ? `${year(info.born)}–${year(info.died)}` : `Born ${year(info.born)}`) : null;
   const place = info?.place ? info.place.split(",").map((x) => x.trim()).slice(0, 2).join(", ") : null;
   const [photoFailed, setPhotoFailed] = useState(false);
   const bio = info?.bio || "";
-  const short = bio.split(/(?<=[.!?])\s+/).slice(0, 2).join(" ");
+  // The filmography strip opens with this film in view, so you see where it sits in their career.
+  const row = useRef(null);
+  useLayoutEffect(() => {
+    const r = row.current, cur = r?.querySelector(".here");
+    if (r && cur) r.scrollLeft = Math.max(0, cur.offsetLeft - r.clientWidth / 2 + cur.clientWidth / 2);
+  }, [film.key, theirs.length]);
   return (
     <section className="director">
-      <div className="section-label">{film.directors.length > 1 ? "Directed by" : "Director"}</div>
-      <button className="director-head" onClick={() => onPerson(name)} aria-label={`${name}: everything on your shelf`}>
+      <div className="section-label caps">{film.directors.length > 1 ? "Directors" : "Director"}</div>
+      <button className="dir-head" onClick={() => onPerson(name)} aria-label={`${name}: everything on your shelf`}>
         <span className="director-photo">
           {info?.photo && !photoFailed ? <img src={img(info.photo, "w185")} alt="" onError={() => setPhotoFailed(true)} /> : <span>{name.split(" ").map((w) => w[0]).slice(0, 2).join("")}</span>}
         </span>
-        <span className="director-text">
+        <span className="dir-name">
           <strong>{peopleLabel(film.directors)}</strong>
           {(dates || place) && <span className="muted">{[dates, place].filter(Boolean).join(" · ")}</span>}
-          <span className="director-stats tnum">
-            <span><b>{theirs.length}</b> on your shelf</span>
-            {avg != null && <span><b>{avg.toFixed(1)}★</b> your average</span>}
-            {rank >= 0 && <span><b>#{rank + 1}</b> in your rankings</span>}
-          </span>
         </span>
         <Icon d={I.chev} size={16} sw={2.4} />
       </button>
+      <div className="strip dir-strip">
+        <div><b>{theirs.length}</b><span>Owned</span></div>
+        <div><b>{avg != null ? avg.toFixed(1) + "★" : "—"}</b><span>Your average</span></div>
+        {rank >= 0 ? <div><b>#{rank + 1}</b><span>Your ranking</span></div> : <div><b>{seen}<small>/{theirs.length}</small></b><span>Watched</span></div>}
+      </div>
       {bio && (
-        <p className={"director-bio" + (open ? " open" : "")} onClick={() => setOpen(!open)}>
-          {open ? bio : short}{!open && bio.length > short.length && <span className="accent"> More</span>}
-        </p>
+        <p className={"director-bio" + (open ? " open" : "")} onClick={() => setOpen(!open)}>{bio}</p>
       )}
-      {others.length > 0 && (
-        <div className="shelf-row" style={{ margin: "4px -20px 0" }}>
-          {others.map((f) => (
-            <button key={f.key} className="shelf-item" onClick={() => onOpen(f)}>
-              <Poster path={f.posterPath} title={f.name} size="w185" />
-              <span>{f.year}{f.rating != null ? " · " + stars(f.rating) : ""}</span>
-            </button>
-          ))}
-        </div>
+      {theirs.length > 1 && (
+        <>
+          <div className="section-label caps dir-sub">On your shelf</div>
+          <div className="shelf-row dir-films" ref={row}>
+            {theirs.map((f) => f.key === film.key ? (
+              <div key={f.key} className="shelf-item here" aria-current="true">
+                <Poster path={f.posterPath} title={f.name} size="w185" />
+                <span>{f.year} · <em>This film</em></span>
+              </div>
+            ) : (
+              <button key={f.key} className="shelf-item" onPointerDown={() => preloadFilm(f)} onClick={() => onOpen(f)}>
+                <Poster path={f.posterPath} title={f.name} size="w185" />
+                <span>{f.year}{f.rating != null ? " · " + stars(f.rating) : ""}</span>
+              </button>
+            ))}
+          </div>
+        </>
       )}
     </section>
   );

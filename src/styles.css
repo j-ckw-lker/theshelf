@@ -442,17 +442,29 @@ html[data-vt="reflow"]::view-transition-old(*), html[data-vt="reflow"]::view-tra
 html[data-vt="reflow"]::view-transition-old(root), html[data-vt="reflow"]::view-transition-new(root) { height: auto; }
 
 /* Director feature on the film page */
-.director { display: flex; flex-direction: column; gap: 10px; }
+.director { display: flex; flex-direction: column; gap: 12px; }
 .director .section-label { margin-bottom: 0; }
-.director-head { display: flex; align-items: center; gap: 14px; text-align: left; padding: 12px; border-radius: 12px; background: var(--bg-2); border: 0.5px solid var(--rule-soft); color: var(--label-2); }
-.director-head:active { opacity: 0.8; }
-.director-photo { width: 64px; height: 64px; border-radius: 32px; overflow: hidden; flex-shrink: 0; background: var(--fill); display: grid; place-items: center; font-size: 20px; font-weight: 600; color: var(--label-2); }
-.director-photo img { width: 100%; height: 100%; object-fit: cover; }
-.director-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.director-text strong { font-size: 18px; color: var(--label); line-height: 1.25; }
-.director-text .muted { font-size: 13px; }
+.section-label.caps { font-size: 12px; font-weight: 600; letter-spacing: 0.9px; text-transform: uppercase; }
+.dir-head { display: flex; align-items: center; gap: 14px; text-align: left; color: var(--label-2); }
+.dir-head:active { opacity: 0.7; }
+.director-photo { width: 64px; height: 64px; border-radius: 32px; overflow: hidden; flex-shrink: 0; background: var(--fill); display: grid; place-items: center; font-size: 20px; font-weight: 600; color: var(--label-2); box-shadow: 0 0 0 0.5px var(--rule), 0 0 0 3px var(--bg), 0 0 0 3.5px rgba(205, 179, 138, 0.55); }
+.director-photo img { width: 100%; height: 100%; object-fit: cover; filter: grayscale(0.35) contrast(1.05); }
 .director-stats { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; color: var(--label-2); margin-top: 2px; }
 .director-stats b { color: var(--accent-text); font-weight: 600; }
+.dir-name { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.dir-name strong { font-family: var(--font-display); font-size: 22px; line-height: 1.15; font-weight: 700; color: var(--label); letter-spacing: 0.1px; }
+.dir-name .muted { font-size: 13px; }
+.dir-strip b { font-size: 20px; }
+.dir-strip b small { font-size: 13px; font-weight: 500; color: var(--label-2); }
+.dir-strip > div:first-child b { color: var(--accent-text); }
+.director-bio { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.director-bio.open { display: block; }
+.dir-sub { margin-top: 4px; }
+.dir-films { margin: 0 -20px; }
+.dir-films .here .poster { box-shadow: 0 0 0 2px var(--accent); }
+.dir-films .here em { font-style: normal; color: var(--accent-text); }
+/* list pages reuse the photo without the ring */
+.list-head .director-photo { box-shadow: none; }
 .director-bio { margin: 0; font-size: 14px; line-height: 1.5; color: var(--label-2); cursor: pointer; }
 .sheet-head { touch-action: none; }
 .sheet-head .fjump { touch-action: pan-x; }
