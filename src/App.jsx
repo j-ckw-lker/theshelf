@@ -2400,10 +2400,13 @@ export default function App() {
     });
     t?.finished.finally(() => { if (target) target.style.viewTransitionName = ""; });
   };
+  // Each tab remembers how far down you were, like iOS tab bars.
+  const tabScroll = useRef({});
   const goTab = (t) => {
     if (t === tab) { setStack([]); window.scrollTo({ top: 0, behavior: "smooth" }); return; }
+    tabScroll.current[tab] = stack.length ? lockedY : window.scrollY;
     forgetScroll();
-    transition("tab", () => { setStack([]); setTab(t); window.scrollTo(0, 0); });
+    transition("tab", () => { setStack([]); setTab(t); }, () => window.scrollTo(0, tabScroll.current[t] || 0));
   };
   // From a Home shelf's "See all": the shelf's visible posters fly to their spots in the Library
   // grid and the shelf title becomes the filter chip. Anything that can't be matched just fades.
@@ -2443,10 +2446,11 @@ export default function App() {
           onFilters={(x) => (x === "reset" ? setFilters({}) : setShowFilters(true))}
           onPair={setNight} onDoubles={() => { setDblView("feed"); goTab("doubles"); }} />
       </main>
-      {tab === "library" && <main><Library films={films} customTags={D.customTags} extra={extra} setExtra={setExtra} onOpen={openFilm} onAdd={() => setAdding({})} onSettings={() => setSettings(true)} searchFocus={searchFocus} onFocused={() => setSearchFocus(0)} /></main>}
-      {tab === "stats" && <main><Stats films={films} onPerson={onPerson} onLabel={(l) => toLibrary({ label: l, test: (f) => f.copies.some((c) => c.label === l) })} /></main>}
+      {/* Tabs stay built in the background, so switching back is instant and keeps your place. */}
+      <main hidden={tab !== "library"}><Library films={films} customTags={D.customTags} extra={extra} setExtra={setExtra} onOpen={openFilm} onAdd={() => setAdding({})} onSettings={() => setSettings(true)} searchFocus={searchFocus} onFocused={() => setSearchFocus(0)} /></main>
+      <main hidden={tab !== "stats"}><Stats films={films} onPerson={onPerson} onLabel={(l) => toLibrary({ label: l, test: (f) => f.copies.some((c) => c.label === l) })} /></main>
       {(tab === "library" || tab === "doubles" || tab === "stats") && !top && <BackToTop key={tab} />}
-      {tab === "doubles" && <main><Doubles films={films} ix={ix} programs={D.programs} view={dblView} setView={setDblView} anchor={anchor} setAnchor={setAnchor} onNight={setNight} finish={finish} /></main>}
+      <main hidden={tab !== "doubles"}><Doubles films={films} ix={ix} programs={D.programs} view={dblView} setView={setDblView} anchor={anchor} setAnchor={setAnchor} onNight={setNight} finish={finish} /></main>
 
       {top && (
         <FilmPage key="film" film={top} films={films} ix={ix} onNight={setNight} onBuildAround={buildAround} allTags={allTags} onAddTag={D.addTag} onRemoveTag={D.removeTag}
