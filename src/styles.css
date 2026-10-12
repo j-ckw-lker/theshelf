@@ -462,3 +462,10 @@ html[data-vt="reflow"]::view-transition-old(root), html[data-vt="reflow"]::view-
 .sync-dot.ok::before { background: #7fd49b; }
 .sync-dot.busy::before { background: var(--accent); }
 .sync-dot.bad::before { background: var(--danger); }
+
+/* Progressive art: small poster instantly, sharp one fades over it; banners fade in */
+.poster .poster-low { position: absolute; inset: 0; }
+.poster .poster-hi { position: relative; opacity: 0; transition: opacity 0.25s ease; }
+.poster .poster-hi.on { opacity: 1; }
+.banner-img { opacity: 0; transition: opacity 0.35s ease; }
+.banner-img.on { opacity: 1; }

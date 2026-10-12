@@ -289,17 +289,35 @@ const I = {
 };
 
 // ─── SHARED BITS ────────────────────────────────────────────────────────
-function Poster({ path, title, size = "w342", className = "", eager = false }) {
+function Poster({ path, title, size = "w342", className = "", eager = false, low }) {
   const [failed, setFailed] = useState(false);
-  useEffect(() => setFailed(false), [path]);
+  const [ready, setReady] = useState(false);
+  useEffect(() => { setFailed(false); setReady(false); }, [path]);
   const src = img(path, size);
   return (
     <div className={"poster " + className}>
+      {/* The smaller copy the grid already downloaded shows instantly; the sharp one fades in over it. */}
+      {low && src && !failed && !ready && [].concat(low).map((sz) => <img key={sz} className="poster-low" src={img(path, sz)} alt="" decoding="sync" />)}
       {src && !failed
-        ? <img src={src} alt="" loading={eager ? "eager" : "lazy"} decoding="async" onError={() => setFailed(true)} />
+        ? <img src={src} alt="" loading={eager ? "eager" : "lazy"} decoding="async" onLoad={() => setReady(true)} onError={() => setFailed(true)} className={low ? "poster-hi" + (ready ? " on" : "") : undefined} />
         : <div className="poster-empty">{title}</div>}
     </div>
   );
+}
+
+// Start downloading a film's page art the moment a finger lands on it, before the tap even finishes.
+const warmed = new Set();
+const preloadFilm = (f) => {
+  if (!f || warmed.has(f.key)) return;
+  warmed.add(f.key);
+  [f.posterPath && img(f.posterPath, "w342"), f.backdrop && img(f.backdrop, "w780")].filter(Boolean).forEach((u) => { const i = new Image(); i.decoding = "async"; i.src = u; });
+};
+
+// A banner that fades in when it arrives instead of popping.
+function Banner({ path, pos }) {
+  const [ready, setReady] = useState(false);
+  useEffect(() => setReady(false), [path]);
+  return <img src={img(path, "w780")} alt="" className={"banner-img" + (ready ? " on" : "")} onLoad={() => setReady(true)} style={{ objectPosition: "center " + pos }} />;
 }
 
 // ─── MOTION ─────────────────────────────────────────────────────────────
@@ -644,7 +662,7 @@ function Home({ films, defs, recipes, filters, home, setHome, onOpen, onSeeAll, 
             ) : (
               <div className="shelf-row">
                 {s.deal.map((f) => (
-                  <button key={f.key} data-key={f.key} className="shelf-item" onClick={(e) => onOpen(f, e)}>
+                  <button key={f.key} data-key={f.key} className="shelf-item" onPointerDown={() => preloadFilm(f)} onClick={(e) => onOpen(f, e)}>
                     <Poster path={f.posterPath} title={f.name} size="w185" />
                     <span>{s.sub(f)}</span>
                   </button>
@@ -896,7 +914,7 @@ function Library({ films, customTags, extra, setExtra, onOpen, onAdd, onSettings
         {view === "wall" && list.length > 0 && (
           <div className="wall" style={{ "--cols": cols }} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd}>
             {letters.flatMap((g) => g.films.map((f, i) => (
-              <button key={f.key} data-key={f.key} id={grouped && i === 0 ? "L-" + g.letter : undefined} onClick={(e) => onOpen(f, e)} aria-label={`${f.name} (${f.year})`}>
+              <button key={f.key} data-key={f.key} id={grouped && i === 0 ? "L-" + g.letter : undefined} onPointerDown={() => preloadFilm(f)} onClick={(e) => onOpen(f, e)} aria-label={`${f.name} (${f.year})`}>
                 <Poster path={f.posterPath} title={f.name} size={cols >= 5 ? "w185" : "w342"} />
               </button>
             )))}
@@ -906,7 +924,7 @@ function Library({ films, customTags, extra, setExtra, onOpen, onAdd, onSettings
           <div key={g.letter || "all"}>
             {g.letter && <div className="letter" id={"L-" + g.letter}>{g.letter}</div>}
             {g.films.map((f) => (
-              <button key={f.key} data-key={f.key} className="film-row" onClick={(e) => onOpen(f, e)}>
+              <button key={f.key} data-key={f.key} className="film-row" onPointerDown={() => preloadFilm(f)} onClick={(e) => onOpen(f, e)}>
                 <Poster path={f.posterPath} title={f.name} size="w92" className="thumb" />
                 <span className="body">
                   <span className="title">{f.name}</span>
@@ -1168,14 +1186,14 @@ function FilmPage({ film, films, ix, onNight, onBuildAround, allTags, backLabel,
     <div className="film-page" ref={ref} role="dialog" aria-label={film.name}>
       <div className="film-inner">
         <div className="film-hero">
-          {film.backdrop && <img src={img(film.backdrop, "w780")} alt="" style={{ objectPosition: "center " + film.backdropPos }} />}
+          {film.backdrop && <Banner key={film.backdrop} path={film.backdrop} pos={film.backdropPos} />}
           {film.tmdb && <button className="icon-btn glass banner-edit" onClick={() => onPicker("banner")} aria-label="Change banner"><Icon d={I.image} size={17} sw={2} /></button>}
           <button className="back" onClick={onBack}><Icon d={I.back} size={20} sw={2.4} /><span>{backLabel}</span></button>
         </div>
 
         <div className="film-head">
           <button onClick={() => onPicker("poster")} aria-label="Change poster" disabled={!film.tmdb}>
-            <Poster path={film.posterPath} title={film.name} eager />
+            <Poster path={film.posterPath} title={film.name} eager low={["w92", "w185"]} />
           </button>
           <div style={{ minWidth: 0, paddingBottom: 2 }}>
             <h1>{film.name}</h1>
