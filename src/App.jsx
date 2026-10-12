@@ -1101,7 +1101,7 @@ function DirectorCard({ film, films, onOpen, onPerson }) {
 }
 
 // ─── FILM PAGE ──────────────────────────────────────────────────────────
-function FilmPage({ film, films, ix, onNight, onBuildAround, allTags, backLabel, onBack, onOpen, onPerson, onUpdate, onLog, onUnlog, onRemove, onPicker, onAddTag, onRemoveTag, onEditCopy, onEditDetails }) {
+function FilmPage({ nav = "in", film, films, ix, onNight, onBuildAround, allTags, backLabel, onBack, onOpen, onPerson, onUpdate, onLog, onUnlog, onRemove, onPicker, onAddTag, onRemoveTag, onEditCopy, onEditDetails }) {
   const [note, setNote] = useState(film.note);
   const [newTag, setNewTag] = useState(null);
   const [editTags, setEditTags] = useState(false);
@@ -1198,7 +1198,7 @@ function FilmPage({ film, films, ix, onNight, onBuildAround, allTags, backLabel,
   const toggleTag = (t) => onUpdate(film.key, { tags: film.tags.includes(t) ? film.tags.filter((x) => x !== t) : [...film.tags, t] });
 
   return (
-    <div className="film-page" ref={ref} role="dialog" aria-label={film.name}>
+    <div className={"film-page" + (nav === "leaving" ? " leaving" : nav === "back" ? " back-in" : "")} ref={ref} role="dialog" aria-label={film.name}>
       <div className="film-inner">
         <div className="film-hero">
           {film.posterPath && <img className="banner-blur" src={img(film.posterPath, "w92")} alt="" aria-hidden="true" />}
@@ -2416,26 +2416,21 @@ export default function App() {
   const top = stack.length ? byKey.get(stack[stack.length - 1]) : null;
   useBodyLock(!!top || !!adding || !!picking || showFilters || !!copyEdit || !!detailsFor || !!night || settings);
 
-  const openFilm = (f, e) => {
-    const push = () => setStack((s) => (s[s.length - 1] === f.key ? s : [...s, f.key]));
-    const el = e?.currentTarget?.querySelector?.(".poster");
-    if (!el) return transition("push", push);
-    // Name the tapped poster for the old snapshot, then hand the name to the film page's poster.
-    el.style.viewTransitionName = "film-poster";
-    transition("morph", () => { el.style.viewTransitionName = ""; push(); });
+  // Film pages use a plain iOS-style push: the page slides in the instant you tap (no screen snapshot
+  // to wait for, unlike a view transition) and slides back out to the right.
+  const [leaving, setLeaving] = useState(false);
+  const navDir = useRef("in");
+  const openFilm = (f) => {
+    navDir.current = "in";
+    setLeaving(false);
+    setStack((s) => (s[s.length - 1] === f.key ? s : [...s, f.key]));
   };
   const back = (opts) => {
-    const leaving = stack[stack.length - 1];
-    const pop = () => setStack((s) => s.slice(0, -1));
-    if (opts?.swiped || !leaving) return pop();
-    let target = null;
-    const t = transition("pop", pop, () => {
-      // Back to the grid or shelf: fly the poster home if its spot is on screen.
-      if (stack.length > 1) return;
-      target = posterFor(leaving);
-      if (target) target.style.viewTransitionName = "film-poster";
-    });
-    t?.finished.finally(() => { if (target) target.style.viewTransitionName = ""; });
+    if (!stack.length || leaving) return;
+    const pop = () => { navDir.current = "back"; setStack((s) => s.slice(0, -1)); setLeaving(false); };
+    if (opts?.swiped || reduceMotion()) return pop();
+    setLeaving(true);
+    setTimeout(pop, 260);
   };
   // Each tab remembers how far down you were, like iOS tab bars.
   const tabScroll = useRef({});
@@ -2497,7 +2492,7 @@ export default function App() {
       <main hidden={tab !== "doubles"}><DoublesTab films={films} ix={ix} programs={D.programs} view={dblView} setView={setDblView} anchor={anchor} setAnchor={setAnchor} onNight={setNight} finish={finish} /></main>
 
       {top && (
-        <FilmPage key="film" film={top} films={films} ix={ix} onNight={setNight} onBuildAround={buildAround} allTags={allTags} onAddTag={D.addTag} onRemoveTag={D.removeTag}
+        <FilmPage key={top.key} nav={leaving ? "leaving" : navDir.current} film={top} films={films} ix={ix} onNight={setNight} onBuildAround={buildAround} allTags={allTags} onAddTag={D.addTag} onRemoveTag={D.removeTag}
           onEditCopy={(c) => setCopyEdit({ key: top.key, copy: c })} onEditDetails={() => setDetailsFor(top.key)} backLabel={backLabel} onBack={back} onOpen={openFilm} onPerson={onPerson}
           onUpdate={D.updateFilm} onLog={(k, date, rating) => { D.logWatch(k, date, rating); if (rating !== undefined) D.updateFilm(k, { rating }); }} onUnlog={D.unlogWatch} onRemove={D.removeFilm} onPicker={(t) => setPicking({ key: top.key, tab: t })} />
       )}
