@@ -1103,36 +1103,12 @@ function DirectorCard({ film, films, onOpen, onPerson }) {
   );
 }
 
-// ─── FILM PAGE ──────────────────────────────────────────────────────────
-function FilmPage({ nav = "in", below = false, film, films, ix, onNight, onBuildAround, allTags, backLabel, onBack, onOpen, onPerson, onUpdate, onLog, onUnlog, onRemove, onPicker, onAddTag, onRemoveTag, onEditCopy, onEditDetails }) {
-  const [note, setNote] = useState(film.note);
-  const [newTag, setNewTag] = useState(null);
-  const [editTags, setEditTags] = useState(false);
-  const [editThemes, setEditThemes] = useState(false);
-  const [logging, setLogging] = useState(false);
-  // Turning a theme on/off undoes an earlier correction first, so a film can always go back to TMDB's answer.
-  const toggleTheme = (id) => {
-    const u = { add: film.themesAdd || [], off: film.themesOff || [] };
-    const on = film.themes.includes(id);
-    if (on) {
-      if (u.add.includes(id)) onUpdate(film.key, { themesAdd: u.add.filter((x) => x !== id) });
-      else onUpdate(film.key, { themesOff: [...u.off, id] });
-    } else if (u.off.includes(id)) onUpdate(film.key, { themesOff: u.off.filter((x) => x !== id) });
-    else onUpdate(film.key, { themesAdd: [...u.add, id] });
-  };
-  const [doomed, setDoomed] = useState(null);
-  const ref = useRef(null);
-  useEffect(() => { setNote(film.note); setNewTag(null); setEditTags(false); setEditThemes(false); setDoomed(null); ref.current?.scrollTo(0, 0); }, [film.key]);
-  const createTag = () => {
-    const t = (newTag || "").trim().replace(/\s+/g, " ");
-    if (t) { onAddTag(t); if (!film.tags.includes(t)) onUpdate(film.key, { tags: [...film.tags, t] }); }
-    setNewTag(null);
-  };
+// Swipe-back for anything pushed on the navigation stack (film pages, people, labels, shelves).
+function useSwipeBack(ref, onBack) {
   // Swipe right anywhere on the page to go back, like iOS. The listeners are attached once and read
   // the latest onBack through a ref: re-attaching them on every render (a photo loading, a sync check)
   // could drop a swipe midway and leave the page stuck half off screen.
   const onBackRef = useRef(onBack); onBackRef.current = onBack;
-  const [mountedBelow] = useState(below); // a page that appears underneath (going back two levels) shouldn't slide in
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -1207,6 +1183,99 @@ function FilmPage({ nav = "in", below = false, film, films, ix, onNight, onBuild
       el.removeEventListener("touchcancel", end);
     };
   }, []);
+}
+
+const stackClass = (nav, below, still, extra = "") =>
+  "film-page" + extra + (nav === "leaving" ? " leaving" : "") + (below ? " below" : "") + (still ? " still" : "");
+
+// A list pushed onto the stack: everything on the shelf by a person, on a label, or on a Home shelf.
+// It slides in and swipes back exactly like a film page, so drilling Film → Director → Film → … always
+// has a way back.
+const ROLES = [["directors", "Directed"], ["dop", "Shot"], ["music", "Scored"], ["cast", "Acted in"]];
+function ListPage({ nav = "in", below = false, entry, films, backLabel, onBack, onOpen }) {
+  const ref = useRef(null);
+  const [mountedBelow] = useState(below);
+  useSwipeBack(ref, onBack);
+  const person = entry.kind === "person" ? entry.label : null;
+  const [sort, setSort] = useState(person ? "oldest" : "az");
+  const list = useMemo(() => films.filter(entry.test).sort(SORTS[sort][1]), [films, entry, sort]);
+  const roles = person ? ROLES.map(([k, l]) => [l, list.filter((f) => f[k].includes(person)).length]).filter(([, n]) => n) : [];
+  const rated = list.filter((f) => f.rating != null);
+  const avg = rated.length > 1 ? rated.reduce((n, f) => n + f.rating, 0) / rated.length : null;
+  const photo = person ? peopleCache[person]?.photo : null;
+  const [photoFailed, setPhotoFailed] = useState(false);
+  const [cols] = useState(() => Math.max(3, Math.min(5, +store.get("shelf-wallcols") || 4)));
+  return (
+    <div className={stackClass(nav, below, mountedBelow, " list-page")} ref={ref} role="dialog" aria-label={entry.label} aria-hidden={below || undefined}>
+      <div className="film-inner">
+        <div className="list-bar">
+          <button className="back" onClick={() => onBack()}><Icon d={I.back} size={20} sw={2.4} /><span>{backLabel}</span></button>
+        </div>
+        <div className="list-head">
+          {person && (
+            <span className="director-photo">
+              {photo && !photoFailed ? <img src={img(photo, "w185")} alt="" onError={() => setPhotoFailed(true)} /> : <span>{person.split(" ").map((w) => w[0]).slice(0, 2).join("")}</span>}
+            </span>
+          )}
+          <div className="list-title">
+            <h1>{entry.label}</h1>
+            <span className="director-stats tnum">
+              <span><b>{list.length}</b> on your shelf</span>
+              {avg != null && <span><b>{avg.toFixed(1)}★</b> your average</span>}
+            </span>
+            {roles.length > 1 && <span className="muted tnum list-roles">{roles.map(([l, n]) => `${l} ${n}`).join(" · ")}</span>}
+          </div>
+        </div>
+        <div className="lib-bar list-sort">
+          <span className="lib-count tnum muted">{list.length === 1 ? "1 film" : list.length + " films"}</span>
+          <label className="sort">
+            {SORTS[sort][0]}<Icon d={I.down} size={12} sw={2.6} />
+            <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sort by">
+              {Object.entries(SORTS).map(([k, [l]]) => <option key={k} value={k}>{l}</option>)}
+            </select>
+          </label>
+        </div>
+        {list.length === 0 ? <div className="empty">Nothing on the shelf here any more.</div> : (
+          <div className="wall" style={{ "--cols": cols }}>
+            {list.map((f) => (
+              <button key={f.key} data-key={f.key} onPointerDown={() => preloadFilm(f)} onClick={() => onOpen(f)} aria-label={`${f.name} (${f.year})`}>
+                <Poster path={f.posterPath} title={f.name} size={cols >= 5 ? "w185" : "w342"} />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── FILM PAGE ──────────────────────────────────────────────────────────
+function FilmPage({ nav = "in", below = false, film, films, ix, onNight, onBuildAround, allTags, backLabel, onBack, onOpen, onPerson, onUpdate, onLog, onUnlog, onRemove, onPicker, onAddTag, onRemoveTag, onEditCopy, onEditDetails }) {
+  const [note, setNote] = useState(film.note);
+  const [newTag, setNewTag] = useState(null);
+  const [editTags, setEditTags] = useState(false);
+  const [editThemes, setEditThemes] = useState(false);
+  const [logging, setLogging] = useState(false);
+  // Turning a theme on/off undoes an earlier correction first, so a film can always go back to TMDB's answer.
+  const toggleTheme = (id) => {
+    const u = { add: film.themesAdd || [], off: film.themesOff || [] };
+    const on = film.themes.includes(id);
+    if (on) {
+      if (u.add.includes(id)) onUpdate(film.key, { themesAdd: u.add.filter((x) => x !== id) });
+      else onUpdate(film.key, { themesOff: [...u.off, id] });
+    } else if (u.off.includes(id)) onUpdate(film.key, { themesOff: u.off.filter((x) => x !== id) });
+    else onUpdate(film.key, { themesAdd: [...u.add, id] });
+  };
+  const [doomed, setDoomed] = useState(null);
+  const ref = useRef(null);
+  useEffect(() => { setNote(film.note); setNewTag(null); setEditTags(false); setEditThemes(false); setDoomed(null); ref.current?.scrollTo(0, 0); }, [film.key]);
+  const createTag = () => {
+    const t = (newTag || "").trim().replace(/\s+/g, " ");
+    if (t) { onAddTag(t); if (!film.tags.includes(t)) onUpdate(film.key, { tags: [...film.tags, t] }); }
+    setNewTag(null);
+  };
+  const [mountedBelow] = useState(below); // a page that appears underneath (going back two levels) shouldn't slide in
+  useSwipeBack(ref, onBack);
   const confirmCopies = () => onUpdate(film.key, { copies: film.copies.map(({ id, ...c }) => ({ ...c, id: newId() })) });
 
   const today = todayISO();
@@ -1225,7 +1294,7 @@ function FilmPage({ nav = "in", below = false, film, films, ix, onNight, onBuild
   const toggleTag = (t) => onUpdate(film.key, { tags: film.tags.includes(t) ? film.tags.filter((x) => x !== t) : [...film.tags, t] });
 
   return (
-    <div className={"film-page" + (nav === "leaving" ? " leaving" : "") + (below ? " below" : "") + (mountedBelow ? " still" : "")} ref={ref} role="dialog" aria-label={film.name} aria-hidden={below || undefined}>
+    <div className={stackClass(nav, below, mountedBelow)} ref={ref} role="dialog" aria-label={film.name} aria-hidden={below || undefined}>
       <div className="film-inner">
         <div className="film-hero">
           {film.posterPath && <img className="banner-blur" src={img(film.posterPath, "w92")} alt="" aria-hidden="true" />}
@@ -2440,7 +2509,10 @@ export default function App() {
     });
   }, [D.added]);
 
-  const top = stack.length ? byKey.get(stack[stack.length - 1]) : null;
+  // The stack holds film keys (strings) and pushed lists ({ id, kind, label, test }).
+  const top = stack.length ? stack[stack.length - 1] : null;
+  const entryName = (e) => (typeof e === "string" ? byKey.get(e)?.name || "Back" : e.label);
+  const listSeq = useRef(0);
   useBodyLock(!!top || !!adding || !!picking || showFilters || !!copyEdit || !!detailsFor || !!night || settings);
 
   // Film pages use a plain iOS-style push: the page slides in the instant you tap (no screen snapshot
@@ -2451,6 +2523,10 @@ export default function App() {
   const openFilm = (f) => {
     setLeaving(false);
     setStack((s) => (s[s.length - 1] === f.key ? s : [...s, f.key]));
+  };
+  const pushList = (entry) => {
+    setLeaving(false);
+    setStack((s) => [...s, { ...entry, id: "list:" + ++listSeq.current }]);
   };
   const back = (opts) => {
     if (!stack.length || leaving) return;
@@ -2468,7 +2544,10 @@ export default function App() {
         if (leaving) return;
         setStack((s) => s.slice(-1)); setLeaving(true);
         setTimeout(() => { setStack([]); setLeaving(false); }, reduceMotion() ? 0 : 330);
-      } else window.scrollTo({ top: 0, behavior: "smooth" });
+      } else {
+        if (t === "library") setExtra(null); // at the root already: back to the whole, unfiltered Library
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
       return;
     }
     tabScroll.current[tab] = stack.length ? lockedY : window.scrollY;
@@ -2499,14 +2578,14 @@ export default function App() {
     });
     if (t) t.finished.finally(clear); else clear();
   };
-  const onPerson = (name) => toLibrary({ label: name, test: (f) => f.directors.includes(name) || f.dop.includes(name) || f.music.includes(name) || f.cast.includes(name) });
+  const onPerson = (name) => pushList({ kind: "person", label: name, test: (f) => f.directors.includes(name) || f.dop.includes(name) || f.music.includes(name) || f.cast.includes(name) });
   const buildAround = (f) => { forgetScroll(); setAnchor(f.key); setDblView("build"); setStack([]); setNight(null); setTab("doubles"); window.scrollTo(0, 0); };
   const logBoth = (a, b, program) => {
     D.logWatch(a.key); D.logWatch(b.key);
     if (program) D.saveProgram({ ...program, watched: todayISO() });
   };
   const openFilmE = useEvent(openFilm);
-  const onSeeAllE = useEvent((s, el) => toLibrary({ label: s.title, test: s.test }, el));
+  const onSeeAllE = useEvent((s) => pushList({ kind: "shelf", label: s.title, test: s.test }));
   const onSearchE = useEvent(() => { toLibrary(null); setSearchFocus((n) => n + 1); });
   const onFiltersE = useEvent((x) => (x === "reset" ? setFilters({}) : setShowFilters(true)));
   const onDoublesE = useEvent(() => { setDblView("feed"); goTab("doubles"); });
@@ -2514,8 +2593,7 @@ export default function App() {
   const onSettingsE = useEvent(() => setSettings(true));
   const onFocusedE = useEvent(() => setSearchFocus(0));
   const onPersonE = useEvent(onPerson);
-  const onLabelE = useEvent((l) => toLibrary({ label: l, test: (f) => f.copies.some((c) => c.label === l) }));
-  const backLabel = stack.length > 1 ? (byKey.get(stack[stack.length - 2])?.name || "Back") : TAB_NAMES[tab];
+  const onLabelE = useEvent((l) => pushList({ kind: "label", label: l, test: (f) => f.copies.some((c) => c.label === l) }));
 
   return (
     <div className="app">
@@ -2534,14 +2612,19 @@ export default function App() {
       <div className={"nav-dim" + (covered ? " on" : "")} aria-hidden="true" />
       {(tab === "library" || tab === "doubles" || tab === "stats") && !top && <BackToTop key={tab} />}
 
-      {stack.slice(-2).map((k, i, arr) => {
-        const f = byKey.get(k);
-        if (!f) return null;
+      {stack.slice(-2).map((e, i, arr) => {
         const isTop = i === arr.length - 1;
         const depth = stack.length - arr.length + i; // position in the whole stack
-        const label = depth > 0 ? (byKey.get(stack[depth - 1])?.name || "Back") : TAB_NAMES[tab];
+        const label = depth > 0 ? entryName(stack[depth - 1]) : TAB_NAMES[tab];
+        const nav = isTop && leaving ? "leaving" : "in";
+        const below = !isTop && !leaving;
+        if (typeof e !== "string") {
+          return <ListPage key={depth + ":" + e.id} nav={nav} below={below} entry={e} films={films} backLabel={label} onBack={back} onOpen={openFilm} />;
+        }
+        const f = byKey.get(e);
+        if (!f) return null;
         return (
-          <FilmPage key={k} nav={isTop ? (leaving ? "leaving" : "in") : "in"} below={!isTop && !leaving} film={f} films={films} ix={ix} onNight={setNight} onBuildAround={buildAround} allTags={allTags} onAddTag={D.addTag} onRemoveTag={D.removeTag}
+          <FilmPage key={depth + ":" + e} nav={nav} below={below} film={f} films={films} ix={ix} onNight={setNight} onBuildAround={buildAround} allTags={allTags} onAddTag={D.addTag} onRemoveTag={D.removeTag}
             onEditCopy={(c) => setCopyEdit({ key: f.key, copy: c })} onEditDetails={() => setDetailsFor(f.key)} backLabel={label} onBack={back} onOpen={openFilm} onPerson={onPerson}
             onUpdate={D.updateFilm} onLog={(key, date, rating) => { D.logWatch(key, date, rating); if (rating !== undefined) D.updateFilm(key, { rating }); }} onUnlog={D.unlogWatch} onRemove={D.removeFilm} onPicker={(t) => setPicking({ key: f.key, tab: t })} />
         );
