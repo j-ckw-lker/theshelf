@@ -442,3 +442,13 @@ html[data-vt="reflow"]::view-transition-old(root), html[data-vt="reflow"]::view-
 .star-hit.l { left: 0; } .star-hit.r { right: 0; }
 .date-chip { position: relative; overflow: hidden; }
 .date-chip input { position: absolute; inset: 0; opacity: 0; width: 100%; font-size: 16px; }
+
+/* Sync */
+.sync h2 { margin: 0; font-size: 18px; font-weight: 600; }
+.sync-note { margin: 0; font-size: 13px; line-height: 1.45; }
+.sync-error { margin: 0; font-size: 13px; color: var(--danger); }
+.sync-dot { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--label-2); }
+.sync-dot::before { content: ""; width: 8px; height: 8px; border-radius: 4px; background: var(--label-3); }
+.sync-dot.ok::before { background: #7fd49b; }
+.sync-dot.busy::before { background: var(--accent); }
+.sync-dot.bad::before { background: var(--danger); }

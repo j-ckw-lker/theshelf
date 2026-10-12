@@ -78,6 +78,133 @@ function useData() {
   };
 }
 
+// ─── SYNC ───────────────────────────────────────────────────────────────
+// Keeps a copy of everything personal on the server (api/sync.js), locked with a passphrase:
+// saves a moment after each change, checks for newer copies when the app opens or comes back,
+// and merges when two devices both changed things. A new install just enters the passphrase.
+const SYNC_FIELDS = ["userData", "added", "want", "watchLog", "customTags", "programs"];
+const hasPersonal = (d) => !!(Object.keys(d.userData || {}).length || (d.added || []).length || Object.keys(d.watchLog || {}).length
+  || (d.customTags || []).length || (d.programs || []).length);
+const unionBy = (a = [], b = [], key) => { const m = new Map(); a.forEach((x) => m.set(key(x), x)); b.forEach((x) => m.set(key(x), x)); return [...m.values()]; };
+// Combine two copies; where both have the same thing, the second (this device) wins.
+function mergeDocs(server = {}, local = {}) {
+  const userData = { ...(server.userData || {}) };
+  Object.entries(local.userData || {}).forEach(([k, u]) => { userData[k] = { ...(userData[k] || {}), ...u }; });
+  const watchLog = { ...(server.watchLog || {}) };
+  Object.entries(local.watchLog || {}).forEach(([k, v]) => {
+    watchLog[k] = unionBy(entriesOf(watchLog[k]), entriesOf(v), (e) => e.date).sort((a, b) => a.date.localeCompare(b.date));
+  });
+  return {
+    userData, watchLog,
+    added: unionBy(server.added, local.added, fkey),
+    customTags: [...new Set([...(server.customTags || []), ...(local.customTags || [])])],
+    programs: unionBy(server.programs, local.programs, (p) => p.id),
+    want: unionBy(server.want, local.want, (w) => w.film + "|" + w.year),
+  };
+}
+
+function useSync(D) {
+  const payload = useMemo(() => Object.fromEntries(SYNC_FIELDS.map((k) => [k, D[k]])), SYNC_FIELDS.map((k) => D[k]));
+  const json = useMemo(() => JSON.stringify(payload), [payload]);
+  const payloadRef = useRef(payload); payloadRef.current = payload;
+  const jsonRef = useRef(json); jsonRef.current = json;
+  const [pass, setPass] = useState(() => store.get("shelf-sync-pass") || "");
+  const [status, setStatus] = useState(() => ({ state: store.get("shelf-sync-pass") ? "idle" : "off", at: readJSON("shelf-sync-meta", {}).at || null }));
+  const meta = useRef(readJSON("shelf-sync-meta", { version: null, at: null, synced: null }));
+  const saveMeta = (m) => { meta.current = { ...meta.current, ...m }; store.set("shelf-sync-meta", JSON.stringify(meta.current)); };
+  const adoptNext = useRef(false);   // the next local change came from the server: remember it as synced, don't send it back
+  const choosing = useRef(null);     // first connect found data both here and in the cloud: wait for a decision
+  const busy = useRef(false);
+  const device = useMemo(() => { let d = store.get("shelf-device"); if (!d) { d = newId(); store.set("shelf-device", d); } return d; }, []);
+
+  const api = async (method, body, p = pass) => {
+    const r = await fetch("/api/sync", { method, headers: { "x-shelf-pass": p, "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+    const j = await r.json().catch(() => ({}));
+    if (r.status === 409) return { conflict: j.doc };
+    if (!r.ok) throw new Error(j.error || "Couldn't reach sync (" + r.status + ").");
+    return j;
+  };
+  const adopt = (data, extra) => { adoptNext.current = true; D.importAll(data); saveMeta(extra); };
+
+  const push = async () => {
+    if (!pass || busy.current || choosing.current) return;
+    busy.current = true; setStatus((s) => ({ ...s, state: "syncing" }));
+    const sentJson = jsonRef.current;
+    try {
+      let r = await api("PUT", { data: payloadRef.current, base: meta.current.version, device });
+      if (r.conflict) {
+        // Another device saved first: fold its changes in, then save the combined copy.
+        const merged = mergeDocs(r.conflict.data, payloadRef.current);
+        r = await api("PUT", { data: merged, base: r.conflict.version, device });
+        if (r.conflict) throw new Error("Changes are arriving from another device. Tap Sync now.");
+        adopt(merged, { version: r.version, at: r.updatedAt });
+      } else saveMeta({ version: r.version, at: r.updatedAt, synced: sentJson });
+      setStatus({ state: "ok", at: r.updatedAt });
+    } catch (e) { setStatus((s) => ({ ...s, state: "error", error: e.message })); }
+    busy.current = false;
+  };
+
+  const pull = async () => {
+    if (!pass || busy.current || choosing.current) return;
+    busy.current = true; setStatus((s) => ({ ...s, state: "syncing" }));
+    try {
+      const { doc } = await api("GET");
+      busy.current = false;
+      if (!doc) { if (hasPersonal(payloadRef.current)) { saveMeta({ version: null, synced: null }); return push(); } return setStatus({ state: "ok", at: Date.now() }); }
+      if (doc.version !== meta.current.version) {
+        const dirty = jsonRef.current !== meta.current.synced;
+        if (!dirty) adopt(doc.data, { version: doc.version, at: doc.updatedAt });
+        else { D.importAll(mergeDocs(doc.data, payloadRef.current)); saveMeta({ version: doc.version }); } // the change effect saves the merge
+      }
+      setStatus({ state: "ok", at: doc.updatedAt });
+    } catch (e) { busy.current = false; setStatus((s) => ({ ...s, state: "error", error: e.message })); }
+  };
+
+  // Save a moment after each change.
+  useEffect(() => {
+    if (!pass) return;
+    if (adoptNext.current) { adoptNext.current = false; saveMeta({ synced: json }); return; }
+    if (json === meta.current.synced || choosing.current) return;
+    const t = setTimeout(push, 1500);
+    return () => clearTimeout(t);
+  }, [json, pass]);
+
+  // Check for a newer copy on launch and whenever the app comes back to the foreground.
+  useEffect(() => {
+    if (!pass) return;
+    pull();
+    const onVis = () => document.visibilityState === "visible" && pull();
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [pass]);
+
+  const connect = async (p) => {
+    setStatus({ state: "syncing" });
+    try {
+      const { doc } = await api("GET", null, p);
+      store.set("shelf-sync-pass", p);
+      if (!doc) { saveMeta({ version: null, synced: null }); setPass(p); return; }               // empty cloud: this phone uploads
+      if (!hasPersonal(payloadRef.current)) { adopt(doc.data, { version: doc.version, at: doc.updatedAt }); setPass(p); setStatus({ state: "ok", at: doc.updatedAt, restored: true }); return; }
+      choosing.current = doc; setPass(p); setStatus({ state: "choose", doc });                  // both have data: ask
+    } catch (e) { setStatus({ state: "off", error: e.message }); }
+  };
+  const choose = (mode) => {
+    const doc = choosing.current; choosing.current = null;
+    if (!doc) return;
+    if (mode === "cloud") { adopt(doc.data, { version: doc.version, at: doc.updatedAt }); setStatus({ state: "ok", at: doc.updatedAt }); return; }
+    if (mode === "merge") D.importAll(mergeDocs(doc.data, payloadRef.current));
+    saveMeta({ version: doc.version, synced: null });
+    setStatus({ state: "syncing" });
+    setTimeout(push, 50);
+  };
+  const disconnect = () => {
+    store.set("shelf-sync-pass", ""); store.set("shelf-sync-meta", "");
+    meta.current = { version: null, at: null, synced: null }; choosing.current = null;
+    setPass(""); setStatus({ state: "off" });
+  };
+  return { on: !!pass, status, connect, choose, disconnect, syncNow: () => (jsonRef.current !== meta.current.synced ? push() : pull()) };
+}
+
 function deriveFilm(raw, userData, watchLog) {
   const key = fkey(raw);
   const u = userData[key] || {};
@@ -1977,7 +2104,60 @@ function NightSheet({ pair, programs, finish, setFinish, onSave, onDelete, onLog
 }
 
 // ─── BACKUP ─────────────────────────────────────────────────────────────
-function Backup({ D, films, onBuy, bare }) {
+// Relative "synced" time for the status line.
+const ago = (t) => {
+  if (!t) return "";
+  const s = Math.round((Date.now() - t) / 1000);
+  return s < 45 ? "just now" : s < 3600 ? Math.round(s / 60) + " min ago" : s < 86400 ? Math.round(s / 3600) + " hr ago" : new Date(t).toLocaleDateString();
+};
+function SyncPanel({ sync }) {
+  const [pass, setPass] = useState("");
+  const st = sync.status;
+  if (st.state === "choose") {
+    return (
+      <section className="stat-section sync">
+        <h2>Sync</h2>
+        <p className="muted sync-note">This phone and your cloud copy both have data. Which should win?</p>
+        <div className="btn-row" style={{ flexDirection: "column" }}>
+          <button className="btn btn-primary" onClick={() => sync.choose("merge")}>Combine both (recommended)</button>
+          <button className="btn btn-outline" onClick={() => sync.choose("cloud")}>Use the cloud copy</button>
+          <button className="btn btn-outline" onClick={() => sync.choose("phone")}>Replace the cloud copy with this phone</button>
+        </div>
+      </section>
+    );
+  }
+  if (!sync.on) {
+    return (
+      <section className="stat-section sync">
+        <h2>Sync</h2>
+        <p className="muted sync-note">Keeps a copy of your tags, copies, watches, posters and double features in the cloud, so deleting the app or switching phones doesn't lose them. Pick a passphrase and use the same one on any device.</p>
+        <form onSubmit={(e) => { e.preventDefault(); if (pass.trim().length >= 8) sync.connect(pass.trim()); }} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <input id="sync-pass" className="field" type="password" autoComplete="current-password" value={pass} onChange={(e) => setPass(e.target.value)} placeholder="Passphrase (8+ characters)" aria-label="Sync passphrase" />
+          <button className="btn btn-primary" type="submit" disabled={pass.trim().length < 8 || st.state === "syncing"}>{st.state === "syncing" ? "Connecting…" : "Turn on sync"}</button>
+        </form>
+        {st.error && <p className="sync-error">{st.error}</p>}
+        <p className="muted sync-note">Keep it somewhere safe, like your password manager. Without it the cloud copy can't be opened.</p>
+      </section>
+    );
+  }
+  const label = st.state === "syncing" ? "Syncing…" : st.state === "error" ? "Not synced" : st.restored ? "Restored from the cloud " + ago(st.at) : st.at ? "Synced " + ago(st.at) : "On";
+  return (
+    <section className="stat-section sync">
+      <div className="stat-head">
+        <h2>Sync</h2>
+        <span className={"sync-dot " + (st.state === "error" ? "bad" : st.state === "syncing" ? "busy" : "ok")}>{label}</span>
+      </div>
+      {st.state === "error" && <p className="sync-error">{st.error}</p>}
+      <p className="muted sync-note">Changes save to the cloud a moment after you make them, and the app checks for newer copies whenever you open it.</p>
+      <div style={{ display: "flex", gap: 22 }}>
+        <button className="link" onClick={sync.syncNow}>Sync now</button>
+        <button className="link" style={{ color: "var(--label-2)" }} onClick={sync.disconnect}>Turn off on this device</button>
+      </div>
+    </section>
+  );
+}
+
+function Backup({ D, sync, films, onBuy, bare }) {
   const [renaming, setRenaming] = useState(null);
   const fileRef = useRef(null);
   const [msg, setMsg] = useState("");
@@ -2014,6 +2194,7 @@ function Backup({ D, films, onBuy, bare }) {
   return (
     <div className={bare ? "" : "page"} style={{ display: "flex", flexDirection: "column", gap: 28 }}>
       {!bare && <div className="page-head"><h1>Backup</h1></div>}
+      {sync && <SyncPanel sync={sync} />}
       <section className="stat-section" style={{ gap: 0, marginTop: bare ? 0 : -14 }}>
         {row("Films", films.length)}
         {row("Added here", films.filter((f) => f.userAdded).length)}
@@ -2107,6 +2288,7 @@ const TAB_NAMES = Object.fromEntries(TABS.map(([k, l]) => [k, l]));
 
 export default function App() {
   const D = useData();
+  const sync = useSync(D);
   const [tab, setTab] = useState("home");
   const [stack, setStack] = useState([]);
   const [extra, setExtra] = useState(null);
@@ -2247,7 +2429,7 @@ export default function App() {
       )}
       {settings && (
         <Sheet title="Backup & lists" onClose={() => setSettings(false)} tall>
-          <Backup bare D={D} films={films} onBuy={(w) => { setSettings(false); setAdding({ name: w.film, year: w.year, label: w.label }); }} />
+          <Backup bare D={D} sync={sync} films={films} onBuy={(w) => { setSettings(false); setAdding({ name: w.film, year: w.year, label: w.label }); }} />
         </Sheet>
       )}
       {copyEdit && byKey.get(copyEdit.key) && (
