@@ -1122,7 +1122,7 @@ function FilmPage({ film, films, ix, onNight, onBuildAround, allTags, backLabel,
                 return <button key={k} className={"chip" + (film.tags.includes(k) ? " on" : "")} aria-pressed={film.tags.includes(k)} onClick={() => toggleTag(k)} disabled={editTags}>{l}</button>;
               })}
               {editTags ? null : newTag == null
-                ? <button className="chip chip-x" style={{ color: "var(--accent)", borderStyle: "dashed" }} onClick={() => setNewTag("")}><Icon d={I.plus} size={13} sw={2.6} />New tag</button>
+                ? <button className="chip chip-x" style={{ color: "var(--accent-text)", borderStyle: "dashed" }} onClick={() => setNewTag("")}><Icon d={I.plus} size={13} sw={2.6} />New tag</button>
                 : (
                   <form onSubmit={(e) => { e.preventDefault(); createTag(); }} style={{ display: "flex", gap: 6 }}>
                     <input className="field" style={{ height: 32, width: 170, fontSize: 15 }} value={newTag} onChange={(e) => setNewTag(e.target.value)}
