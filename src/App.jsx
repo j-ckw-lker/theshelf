@@ -931,7 +931,7 @@ const SORTS = {
   long: ["Longest runtime", (a, b) => (b.runtime || 0) - (a.runtime || 0)],
 };
 
-function Library({ films: allFilms, customTags, extra, setExtra, onOpen, onAdd, searchFocus, onFocused }) {
+function Library({ films: allFilms, customTags, extra, setExtra, onOpen, onAdd, searchFocus, onFocused, reset }) {
   // Preferences: digital-only films and films tagged Sell can stay out of the Library unless you go looking.
   const [countDigital] = usePref("shelf-count-digital", false);
   const [hideSell] = usePref("shelf-hide-sell", false);
@@ -980,6 +980,8 @@ function Library({ films: allFilms, customTags, extra, setExtra, onOpen, onAdd, 
   }, []);
   const inputRef = useRef(null);
   useEffect(() => { if (searchFocus) { inputRef.current?.focus(); onFocused(); } }, [searchFocus]);
+  // Library tab tapped while open: back to the untouched Library.
+  useEffect(() => { if (reset) { setQ(""); setSel({}); setFiltering(false); inputRef.current?.blur(); } }, [reset]);
 
   const query = q.trim().toLowerCase();
   const list = useMemo(() => {
@@ -3191,6 +3193,7 @@ export default function App() {
   const [picking, setPicking] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
   const [searchFocus, setSearchFocus] = useState(0);
+  const [libReset, setLibReset] = useState(0);
   const [filters, setFilters] = useStored("shelf-filters", {});
   const [home, setHome] = useHomeState();
   // Preference: a fresh Home pick every time the app opens, instead of one pick per day.
@@ -3283,15 +3286,24 @@ export default function App() {
   const tabScroll = useRef({});
   const goTab = (t) => {
     if (t === tab) {
-      // Tapping the tab you're on pops straight back to its root, animated like iOS; tap again to scroll up.
+      // Tapping the Library tab while you're in it is a full reset, in one tap: every page closes and the
+      // Library comes back exactly as it first opens (no search, no filters, at the top).
+      if (t === "library") {
+        forgetScroll();
+        setExtra(null);
+        setLibReset((n) => n + 1);
+        if (stack.length && !leaving) {
+          setStack((s) => s.slice(-1)); setLeaving(true);
+          setTimeout(() => { setStack([]); setLeaving(false); window.scrollTo(0, 0); }, reduceMotion() ? 0 : 330);
+        } else if (!stack.length) window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+      // Other tabs: pop straight back to the root, animated like iOS; tap again to scroll up.
       if (stack.length) {
         if (leaving) return;
         setStack((s) => s.slice(-1)); setLeaving(true);
         setTimeout(() => { setStack([]); setLeaving(false); }, reduceMotion() ? 0 : 330);
-      } else {
-        if (t === "library") setExtra(null); // at the root already: back to the whole, unfiltered Library
-        window.scrollTo({ top: 0, behavior: "smooth" });
-      }
+      } else window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
     tabScroll.current[tab] = stack.length ? lockedY : window.scrollY;
@@ -3351,7 +3363,7 @@ export default function App() {
           onOpen={openFilmE} onSeeAll={onSeeAllE} onSearch={onSearchE} onFilters={onFiltersE} onPair={setNight} onDoubles={onDoublesE} saved={D.programs.length} />
       </main>
       {/* Tabs stay built in the background, so switching back is instant and keeps your place. */}
-      <main hidden={tab !== "library"}><LibraryTab films={films} customTags={D.customTags} extra={extra} setExtra={setExtra} onOpen={openFilmE} onAdd={onAddE} searchFocus={searchFocus} onFocused={onFocusedE} /></main>
+      <main hidden={tab !== "library"}><LibraryTab films={films} customTags={D.customTags} extra={extra} setExtra={setExtra} onOpen={openFilmE} onAdd={onAddE} searchFocus={searchFocus} onFocused={onFocusedE} reset={libReset} /></main>
       <main hidden={tab !== "you"}><YouTab films={shelfFilms} want={D.want} programs={D.programs} sync={sync} onOpen={openFilmE} onPush={onPushE} /></main>
       </div>
       <div className={"nav-dim" + (covered ? " on" : "")} aria-hidden="true" />
