@@ -454,9 +454,67 @@ function Sheet({ title, onClose, left, right, tall, children, foot, sub }) {
       el.removeEventListener("touchcancel", end);
     };
   }, []);
+  // iOS hands a scroll to the whole screen whenever the sheet's list can't scroll any further that way
+  // (already at the top, or too short to scroll at all), and the whole sheet slides down with your finger,
+  // worst with the keyboard up. So inside a sheet, a vertical drag only ever scrolls the sheet's list: at
+  // its ends, or anywhere outside it, the drag is swallowed. Sideways drags (chip rows) pass through.
+  const scrimRef = useRef(null);
+  useEffect(() => {
+    const scrim = scrimRef.current;
+    if (!scrim) return;
+    let x = 0, y = 0, body = null, axis = null;
+    const ts = (e) => {
+      if (e.touches.length !== 1) return;
+      x = e.touches[0].clientX; y = e.touches[0].clientY; axis = null;
+      body = e.target.closest(".sheet-body");
+    };
+    const tm = (e) => {
+      if (!e.cancelable || e.touches.length !== 1) return;
+      const nx = e.touches[0].clientX, ny = e.touches[0].clientY;
+      const dx = nx - x, dy = ny - y;
+      if (axis == null && Math.abs(dx) + Math.abs(dy) > 4) axis = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+      x = nx; y = ny;
+      if (axis !== "y") return;
+      if (e.target.closest(".sheet-head")) return; // the header's own drag-to-dismiss handles itself
+      const ta = e.target.closest("textarea");
+      if (ta && ta.scrollHeight > ta.clientHeight) return;
+      if (!body) { e.preventDefault(); return; }
+      const atTop = body.scrollTop <= 0;
+      const atEnd = body.scrollTop + body.clientHeight >= body.scrollHeight - 1;
+      if ((dy > 0 && atTop) || (dy < 0 && atEnd)) e.preventDefault();
+    };
+    scrim.addEventListener("touchstart", ts, { passive: true });
+    scrim.addEventListener("touchmove", tm, { passive: false });
+    return () => { scrim.removeEventListener("touchstart", ts); scrim.removeEventListener("touchmove", tm); };
+  }, []);
+  // When the keyboard is up, iOS shrinks only the *visible* part of the screen and shoves the page up to
+  // make room, which pushed the sheet's header off the top. Pin the sheet's backdrop to exactly the
+  // visible area above the keyboard instead, so the whole sheet fits and nothing needs to move.
+  useEffect(() => {
+    const vv = window.visualViewport, scrim = scrimRef.current;
+    if (!vv || !scrim) return;
+    const fit = () => {
+      const full = document.documentElement.clientHeight || window.innerHeight;
+      const kb = full - vv.height > 80;
+      scrim.classList.toggle("kb", kb);
+      if (kb) {
+        scrim.style.top = vv.offsetTop + "px";
+        scrim.style.height = vv.height + "px";
+        scrim.style.bottom = "auto";
+        scrim.style.setProperty("--vvh", vv.height + "px");
+      } else {
+        scrim.style.top = scrim.style.height = scrim.style.bottom = "";
+        scrim.style.removeProperty("--vvh");
+      }
+    };
+    fit();
+    vv.addEventListener("resize", fit);
+    vv.addEventListener("scroll", fit);
+    return () => { vv.removeEventListener("resize", fit); vv.removeEventListener("scroll", fit); };
+  }, []);
   // Rendered at the top of the page, so a sheet opened from inside a film page still covers the tab bar.
   return createPortal(
-    <div className={"scrim" + (leaving ? " leaving" : "")} onClick={close}>
+    <div ref={scrimRef} className={"scrim" + (leaving ? " leaving" : "")} onClick={close}>
       <div ref={sheetRef} className={"sheet" + (tall ? " tall" : "") + (leaving ? " leaving" : "")} role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
         <div className="sheet-head">
           <div className="grabber" />
