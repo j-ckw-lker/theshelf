@@ -7,7 +7,7 @@ import { IMPORTED_WANTS, IMPORT_ID, IMPORT2_ID, IMPORT2_ADD, IMPORT2_PATCH } fro
 import {
   store, readJSON, fkey, img, tmdb, shapeTmdbMovie, todayISO, thisYear, fmtDate, runtimeLabel, stars,
   sortKey, letterOf, peopleLabel, hashStr, rng, shuffled, yearsSince, parseEdition, copyBadges, copyLine, money,
-  FORMATS, PACKAGES, REGIONS, KNOWN_LABELS, canonicalLabel, newId, isDigital, CODE_QUALITIES,
+  FORMATS, PACKAGES, pkgsOf, REGIONS, KNOWN_LABELS, canonicalLabel, newId, isDigital, CODE_QUALITIES,
 } from "./lib.js";
 import { TAGS, THEMES, makeFilters, filterTest, activeFilterLabels, buildRecipes, dealShelves } from "./shelves.js";
 import { pairIndex, bestPairs, partnersFor, scorePair, nightPlan, reasonLine } from "./pairs.js";
@@ -331,7 +331,7 @@ function deriveFilm(raw, userData, watchLog, hiddenTags = []) {
     // When it joined the shelf: earliest copy purchase date, else the day it was added here, else reconstructed history.
     addedOn: copies.map((c) => c.purchased).filter(Boolean).sort()[0] || f.addedAt || f.added || null,
     addedSince: f.addedSince || null,
-    special: copies.some((c) => (c.package && c.package !== "Standard") || c.label),
+    special: copies.some((c) => pkgsOf(c).length > 0 || c.label),
     views, lastWatched, diary,
     yearNum: parseInt(f.year) || 0,
     recency: f.userAdded ? 1e6 + (Date.parse(f.addedAt || "2026-10-11") / 864e5) : (f.added || 0),
@@ -920,7 +920,7 @@ const countryName = (code) => {
 const libGroups = (films, customTags, hiddenTags = []) => {
   const has = (fn) => (f) => f.copies.some(fn);
   const formats = FORMATS.filter((x) => films.some(has((c) => c.format === x)));
-  const pkgs = PACKAGES.filter((x) => x !== "Standard" && films.some(has((c) => c.package === x)));
+  const pkgs = PACKAGES.filter((x) => x !== "Standard" && films.some(has((c) => pkgsOf(c).includes(x))));
   const labels = byCount(films.map((f) => f.copies.map((c) => c.label).filter(Boolean)));
   const atLeast = (n, lists) => { const all = byCount(lists); return all.filter((v) => lists.filter((l) => l.includes(v)).length >= n); };
   const decades = [...new Set(films.map((f) => Math.floor(f.yearNum / 10) * 10).filter(Boolean))].sort((a, b) => b - a);
@@ -934,7 +934,7 @@ const libGroups = (films, customTags, hiddenTags = []) => {
       ...(films.some((f) => f.unredeemed) ? [["unredeemed", "Unredeemed code", (f) => f.unredeemed]] : []),
       ["none", "Not filled in", (f) => !f.copies.some((c) => c.format)],
     ]],
-    ["package", "Packaging", pkgs.map((x) => [x, x, has((c) => c.package === x)])],
+    ["package", "Packaging", pkgs.map((x) => [x, x, has((c) => pkgsOf(c).includes(x))])],
     ["label", "Distributor", labels.map((x) => [x, x, has((c) => c.label === x)])],
     ["tag", "Tags", [...Object.entries(TAGS).filter(([k]) => !hiddenTags.includes(k)), ...customTags.map((t) => [t, t])].map(([k, l]) => [k, l, (f) => f.tags.includes(k)])],
     ["decade", "Decade", decades.map((d) => [String(d), d + "s", (f) => f.yearNum >= d && f.yearNum < d + 10])],
@@ -2429,7 +2429,7 @@ function CopySheet({ film, copy, labels, onNewLabel, onSave, onClose }) {
   const [allLabels, setAllLabels] = useState(false);
   const [newLabel, setNewLabel] = useState(null);
   const isNew = !copy;
-  const [c, setC] = useState(() => copy ? { ...copy, price: copy.price ?? "" } : { id: newId(), format: "", package: "Standard", label: "", region: "", purchased: "", price: "", note: "" });
+  const [c, setC] = useState(() => copy ? { ...copy, package: pkgsOf(copy), price: copy.price ?? "" } : { id: newId(), format: "", package: [], label: "", region: "", purchased: "", price: "", note: "" });
   const set = (k, v) => setC((x) => ({ ...x, [k]: v }));
   const clean = (x) => {
     const out = { ...x, id: x.id.startsWith("s") ? newId() : x.id, label: canonicalLabel((x.label || "").trim()), note: (x.note || "").trim() };
@@ -2437,7 +2437,7 @@ function CopySheet({ film, copy, labels, onNewLabel, onSave, onClose }) {
     if (isNaN(n)) delete out.price; else out.price = n;
     if (!out.purchased) delete out.purchased;
     if (!out.region || isDigital(out)) delete out.region;
-    if (isDigital(out)) { out.package = "Standard"; delete out.code; delete out.codeRedeemed; }
+    if (isDigital(out)) { out.package = []; delete out.code; delete out.codeRedeemed; }
     if (!out.code) { delete out.code; delete out.codeRedeemed; }
     return out;
   };
@@ -2462,7 +2462,18 @@ function CopySheet({ film, copy, labels, onNewLabel, onSave, onClose }) {
       foot={!isNew && <button className="btn btn-outline" style={{ color: "var(--danger)" }} onClick={remove}>Delete this copy</button>}>
       <div className="muted" style={{ fontSize: 14, marginTop: -4 }}>{film.name} ({film.year})</div>
       <div><span className="field-label">Format</span><Chips k="format" opts={FORMATS} allowNone /></div>
-      {isDigital(c) ? null : <div><span className="field-label">Package</span><Chips k="package" opts={PACKAGES} /></div>}
+      {isDigital(c) ? null : (
+        <div>
+          <span className="field-label">Package <span className="muted">· pick all that apply</span></span>
+          <div className="tag-row">
+            {PACKAGES.map((o) => {
+              const on = o === "Standard" ? !c.package.length : c.package.includes(o);
+              const toggle = () => set("package", o === "Standard" ? [] : PACKAGES.filter((p) => p !== "Standard" && (p === o ? !on : c.package.includes(p))));
+              return <button key={o} type="button" className={"chip" + (on ? " on" : "")} aria-pressed={on} onClick={toggle}>{o}</button>;
+            })}
+          </div>
+        </div>
+      )}
       <div>
         <span className="field-label">Label or distributor</span>
         <div className="tag-row">

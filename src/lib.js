@@ -124,6 +124,12 @@ export const FORMATS = ["4K", "Blu-ray", "DVD", "Other", "Digital 4K", "Digital 
 export const isDigital = (c) => /^Digital/.test(c.format || "");
 export const CODE_QUALITIES = ["4K", "HD"];
 export const PACKAGES = ["Standard", "Steelbook", "Limited", "Collector's", "Box set"];
+// A copy's packaging is a list now (a limited collector's steelbook is all three). Older copies stored one
+// string, with "Standard" meaning none; read both.
+export const pkgsOf = (c) => {
+  const v = Array.isArray(c.package) ? c.package : c.package ? [c.package] : [];
+  return PACKAGES.filter((p) => p !== "Standard" && v.includes(p));
+};
 export const REGIONS = ["A", "B", "C", "Free"];
 const LABEL_PATTERNS = [
   [/criterion/, "Criterion"], [/arrow/, "Arrow Video"], [/vinegar/, "Vinegar Syndrome"], [/radiance/, "Radiance"],
@@ -154,8 +160,8 @@ export function parseEdition(text = "") {
   t.split(/,|&|\band\b|\+|;/).map((s) => s.trim()).filter(Boolean).forEach((part) => {
     const n = +(part.match(/^(\d+)\s+/) || [])[1] || 1;
     const format = /\b4k\b|uhd/.test(part) ? "4K" : /blu.?ray|\bbd\b/.test(part) ? "Blu-ray" : /dvd/.test(part) ? "DVD" : "";
-    const pkg = /steel/.test(part) ? "Steelbook" : /collector/.test(part) ? "Collector's" : /limited/.test(part) ? "Limited"
-      : /collection|box|trilogy/.test(part) ? "Box set" : "Standard";
+    const pkg = [/steel/.test(part) && "Steelbook", /limited/.test(part) && "Limited", /collector/.test(part) && "Collector's",
+      /collection|box|trilogy/.test(part) && "Box set"].filter(Boolean);
     const lab = LABEL_PATTERNS.find(([re]) => re.test(part));
     const leftover = part
       .replace(/^\d+\s+/, "").replace(/\b4k\b|uhd|blu.?rays?|\bbd\b|dvds?|steelbooks?|collector'?s?|edition|limited|ultra hd/g, "")
@@ -171,12 +177,12 @@ export function copyBadges(copies) {
   const out = [];
   if (copies.some((c) => c.format === "4K")) out.push("4K");
   if (copies.length && copies.every(isDigital)) out.push("Digital only");
-  if (copies.some((c) => c.package === "Steelbook")) out.push("Steelbook");
+  if (copies.some((c) => pkgsOf(c).includes("Steelbook"))) out.push("Steelbook");
   [...new Set(copies.map((c) => c.label).filter(Boolean))].forEach((l) => out.push(l));
   const physical = copies.filter((c) => !isDigital(c));
   if (physical.length > 1) out.push(physical.length + " copies");
   return out;
 }
 
-export const copyLine = (c) => (isDigital(c) ? c.label || "Digital copy" : [c.package && c.package !== "Standard" ? c.package : null, c.label || null].filter(Boolean).join(" · ") || "Standard");
+export const copyLine = (c) => (isDigital(c) ? c.label || "Digital copy" : [...pkgsOf(c), c.label || null].filter(Boolean).join(" · ") || "Standard");
 export const money = (n) => (n == null || n === "" ? "" : "$" + Number(n).toFixed(Number(n) % 1 ? 2 : 0));
