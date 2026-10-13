@@ -870,15 +870,18 @@ function FilterSheet({ films, defs, filters, setFilters, onClose }) {
     return { key, label, opts: opts.map(([o, l, test]) => ({ o, l, n: base.filter(test).length })) };
   }), [films, defs, filters]);
   const set = (key, o) => setFilters({ ...filters, [key]: filters[key] === o ? "any" : o });
+  // Long groups (People, Shelf) show their first dozen plus whatever's picked, with the rest one tap away.
+  const [open, setOpen] = useState({});
+  const CAP = 12;
   return (
     <Sheet title="Tonight's filters" onClose={onClose} tall
       left={<button className="left" onClick={() => setFilters({})}>Reset</button>}
       foot={<button className="btn btn-primary" onClick={onClose} disabled={!matching}>{matching ? `Pick from ${matching} films` : "Nothing matches yet"}</button>}>
-      {groups.map((g) => (
+      {groups.filter((g) => g.opts.length).map((g) => (
         <div key={g.key}>
           <div className="section-label">{g.label}</div>
           <div className="tag-row">
-            {g.opts.map(({ o, l, n }) => {
+            {g.opts.filter((x, i) => open[g.key] || i < CAP || filters[g.key] === x.o).map(({ o, l, n }) => {
               const on = filters[g.key] === o;
               return (
                 <button key={o} className={"chip tnum" + (on ? " on" : "") + (!on && n === 0 ? " dim" : "")} aria-pressed={on} onClick={() => set(g.key, o)}>
@@ -886,6 +889,11 @@ function FilterSheet({ films, defs, filters, setFilters, onClose }) {
                 </button>
               );
             })}
+            {g.opts.length > CAP && (
+              <button className="chip chip-more" onClick={() => setOpen({ ...open, [g.key]: !open[g.key] })} aria-expanded={!!open[g.key]}>
+                {open[g.key] ? "Fewer" : `All ${g.opts.length}`}
+              </button>
+            )}
           </div>
         </div>
       ))}
@@ -3684,7 +3692,7 @@ export default function App() {
   }, []);
   const [night, setNight] = useState(null);
   const [finish, setFinish] = useStored("shelf-finishby", 23);
-  const defs = useMemo(() => makeFilters(D.customTags, hiddenTags), [D.customTags, hiddenTags]);
+  const defs = useMemo(() => makeFilters(D.customTags, hiddenTags, recipes), [D.customTags, hiddenTags, recipes]);
   const allTags = useMemo(() => [...Object.entries(TAGS).filter(([k]) => !hiddenTags.includes(k)), ...D.customTags.map((t) => [t, t])], [D.customTags, hiddenTags]);
   // Label chips for copies: the ones you use most, then ones you've typed, then the usual boutique and studio labels.
   const labels = useMemo(() => {

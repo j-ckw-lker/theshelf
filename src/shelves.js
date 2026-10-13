@@ -18,7 +18,10 @@ const tagged = (t) => (f) => f.tags.includes(t);
 
 // ─── Tonight's filters ──────────────────────────────────────────────────
 // [key, label, [[optionKey, label, test], …]]. "any" is implied first.
-export const makeFilters = (customTags = [], hiddenTags = []) => [
+// Home's own shelves join as filters too, so Pick another can draw from "Hidden gems" or "Michael Mann".
+// Shelves an existing group already covers (genres, eras, lengths, last watched, editions, tags) are left out.
+const SHELF_DUPES = new Set(["asia", "horror", "scifi5", "comedy", "war", "animation", "five", "short", "epic", "dusty", "never", "editions", "tag:comfort", "tag:rewatch", "tag:hidden"]);
+export const makeFilters = (customTags = [], hiddenTags = [], recipes = []) => [
   ["mood", "Mood", [
     ["comfort", "Comfort", (f) => (f.rating ?? 0) >= 4.5 || f.tags.includes("comfort")],
     ["five", "5 stars", (f) => f.rating === 5],
@@ -26,6 +29,14 @@ export const makeFilters = (customTags = [], hiddenTags = []) => [
     ...(hiddenTags.includes("hidden") ? [] : [["gem", "Tagged gem", tagged("hidden")]]),
     ...customTags.map((t) => ["tag:" + t, t, tagged(t)]),
   ]],
+  ["shelf", "Shelf", recipes
+    .filter((r) => r.kind !== "person" && r.kind !== "pairs" && !THEME_IDS.includes(r.id) && !SHELF_DUPES.has(r.id) && !r.id.startsWith("dec") && !(r.id.startsWith("tag:") && customTags.includes(r.id.slice(4))))
+    .map((r) => [r.id, r.title, r.test])],
+  ["theme", "Theme", THEMES.map(([id, title]) => [id, title, (f) => f.themes.includes(id)])],
+  ["people", "People", recipes
+    .filter((r) => r.kind === "person")
+    .sort((a, b) => b.id.startsWith("dir:") - a.id.startsWith("dir:") || b.films.length - a.films.length || a.title.localeCompare(b.title))
+    .map((r) => [r.id, r.title, r.test])],
   ["genre", "Genre", [
     ["action", "Action", hasGenre("Action")],
     ["animation", "Animation", hasGenre("Animation")],
@@ -70,7 +81,6 @@ export const makeFilters = (customTags = [], hiddenTags = []) => [
     ["special", "Any special edition", (f) => f.special],
   ]],
 ];
-export const FILTERS = makeFilters();
 
 export const filterTest = (defs, filters, skipKey) => (f) =>
   !f.tags.includes("sell") &&
