@@ -157,7 +157,7 @@ img { display: block; }
 .wall > button:active .poster { opacity: 0.75; }
 .wall .poster-empty { font-size: 10px; padding: 5px; }
 .density { display: inline-flex; align-items: flex-end; gap: 2px; padding: 3px; border-radius: 8px; background: var(--fill); }
-.density button { width: 28px; height: 24px; border-radius: 6px; display: grid; place-items: center; }
+.density button { width: 25px; height: 24px; border-radius: 6px; display: grid; place-items: center; }
 .density button i { display: block; border-radius: 1.5px; background: var(--label-2); }
 .density button.on { background: rgba(255, 255, 255, 0.14); }
 .density button.on i { background: var(--accent); }
@@ -384,7 +384,7 @@ input[type="date"].field::-webkit-date-and-time-value { text-align: left; }
 .lib-filter { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .lib-filter .chip.on { min-width: 0; max-width: 60%; }
 .lib-filter .extra-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lib-bar { gap: 10px; }
+.lib-bar { gap: 8px; }
 .lib-bar .filter-btn { flex-shrink: 0; }
 .lib-count { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; white-space: nowrap; overflow: hidden; }
 .lib-count .link { font-size: 13px; }

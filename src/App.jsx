@@ -968,6 +968,97 @@ const libGroups = (films, customTags, hiddenTags = []) => {
 const activeOpts = (groups, sel) => groups.map(([g, name, opts]) => [g, name, opts.filter((o) => (sel[g] || []).includes(o[0]))]).filter((x) => x[2].length);
 const selTest = (active, skip) => (f) => active.every(([g, , opts]) => g === skip || opts.some((o) => o[2](f)));
 
+// ─── POSTER COLOR ───────────────────────────────────────────────────────
+// Sorting by color needs each poster's dominant hue. Read once per poster from a 92px thumbnail and
+// remembered per poster path (a new custom poster gets read again). Stored as [hue, colorfulness, lightness].
+// Most posters are black with a splash of color, so the hue comes only from genuinely colored pixels,
+// weighted by how vivid they are; posters with too little color count as black-and-white and sort by lightness.
+const posterColors = readJSON("shelf-colors", {});
+// Saved as it goes (every couple dozen posters), so leaving the app mid-read loses almost nothing.
+const saveColors = () => store.set("shelf-colors", JSON.stringify(posterColors));
+const loadImg = (src) => new Promise((ok, fail) => {
+  const im = new Image();
+  im.crossOrigin = "anonymous";
+  im.onload = () => ok(im); im.onerror = fail;
+  im.src = src;
+});
+let tmdbCors = null; // does TMDB let us read pixels directly? Learned on the first poster, then the proxy if not
+function readColor(im) {
+  const W = 24, H = 36;
+  const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+  const cx = cv.getContext("2d", { willReadFrequently: true });
+  cx.drawImage(im, 0, 0, W, H);
+  const d = cx.getImageData(0, 0, W, H).data; // throws if the image isn't readable
+  const w = new Float64Array(36), cs = new Float64Array(36), sn = new Float64Array(36);
+  let light = 0, vivid = 0;
+  const n = W * H;
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i] / 255, g = d[i + 1] / 255, b = d[i + 2] / 255;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), ch = mx - mn;
+    light += (mx + mn) / 2;
+    if (ch < 0.12 || mx < 0.15) continue;
+    let h = mx === r ? ((g - b) / ch) % 6 : mx === g ? (b - r) / ch + 2 : (r - g) / ch + 4;
+    h = (h * 60 + 360) % 360;
+    const bin = Math.floor(h / 10) % 36, rad = (h * Math.PI) / 180;
+    w[bin] += ch; cs[bin] += ch * Math.cos(rad); sn[bin] += ch * Math.sin(rad);
+    vivid += ch;
+  }
+  let peak = 0, best = -1;
+  for (let i = 0; i < 36; i++) { const s = w[(i + 35) % 36] + w[i] + w[(i + 1) % 36]; if (s > best) { best = s; peak = i; } }
+  const near = [(peak + 35) % 36, peak, (peak + 1) % 36];
+  const hue = (Math.atan2(near.reduce((a, i) => a + sn[i], 0), near.reduce((a, i) => a + cs[i], 0)) * 180) / Math.PI;
+  return [Math.round((hue + 360) % 360), Math.round((vivid / n) * 100), Math.round((light / n) * 100)];
+}
+async function posterColor(path) {
+  if (!path) return null;
+  const direct = img(path, "w92"), proxied = "/api/img?p=" + encodeURIComponent(path);
+  const attempt = async (src) => readColor(await loadImg(src));
+  if (tmdbCors !== false) {
+    try { const c = await attempt(direct); tmdbCors = true; return c; } catch { if (tmdbCors === null) tmdbCors = false; }
+  }
+  try { return await attempt(proxied); } catch { return null; }
+}
+// Reads any posters that haven't been read yet while `on`, six at a time, and re-sorts as results arrive.
+function usePosterColors(films, on) {
+  const [, bump] = useState(0);
+  const [progress, setProgress] = useState(null);
+  useEffect(() => {
+    if (!on) return;
+    const todo = [...new Set(films.map((f) => f.posterPath).filter((p) => p && !(p in posterColors)))];
+    if (!todo.length) return;
+    let dead = false, done = 0;
+    setProgress({ done: 0, of: todo.length });
+    const worker = async () => {
+      while (todo.length && !dead) {
+        const p = todo.shift();
+        const c = await posterColor(p);
+        if (dead) return;
+        posterColors[p] = c; // null = couldn't read; it sorts last and isn't retried every time
+        done++;
+        if (done % 24 === 0) { saveColors(); bump((x) => x + 1); setProgress({ done, of: done + todo.length }); }
+      }
+    };
+    Promise.all(Array.from({ length: 6 }, worker)).then(() => { if (!dead) { saveColors(); bump((x) => x + 1); setProgress(null); } });
+    return () => { dead = true; saveColors(); };
+  }, [on, films]);
+  return progress;
+}
+// Rainbow order, which is also warm to cool: reds (starting from the deep pinks) through orange, yellow,
+// green, blue, violet. Then black-and-white posters, light to dark, then anything without a readable poster.
+const HUE_START = 345, NEUTRAL = 5;
+const colorRank = (f) => {
+  const c = posterColors[f.posterPath];
+  if (!c) return 2000;
+  if (c[1] < NEUTRAL) return 1000 + (100 - c[2]);
+  return (c[0] - HUE_START + 360) % 360;
+};
+const byColor = (dir) => (a, b) => {
+  const x = colorRank(a), y = colorRank(b);
+  const xs = x >= 1000, ys = y >= 1000;
+  if (xs !== ys) return xs ? 1 : -1; // colored posters first either way
+  return (xs ? x - y : dir * (x - y)) || a.sortKey.localeCompare(b.sortKey);
+};
+
 const SORTS = {
   az: ["Title A–Z", (a, b) => a.sortKey.localeCompare(b.sortKey)],
   newest: ["Newest", (a, b) => b.yearNum - a.yearNum || a.sortKey.localeCompare(b.sortKey)],
@@ -975,7 +1066,10 @@ const SORTS = {
   rating: ["Top rated", (a, b) => (b.rating ?? -1) - (a.rating ?? -1) || a.sortKey.localeCompare(b.sortKey)],
   recent: ["Recently added", (a, b) => b.recency - a.recency],
   long: ["Longest runtime", (a, b) => (b.runtime || 0) - (a.runtime || 0)],
+  color: ["Color: warm to cool", byColor(1), "Warm to cool"],
+  colorcool: ["Color: cool to warm", byColor(-1), "Cool to warm"],
 };
+const isColorSort = (k) => k === "color" || k === "colorcool";
 
 function Library({ films: allFilms, customTags, extra, setExtra, onOpen, onAdd, searchFocus, onFocused, reset }) {
   // Preferences: digital-only films and films tagged Sell can stay out of the Library unless you go looking.
@@ -1030,6 +1124,7 @@ function Library({ films: allFilms, customTags, extra, setExtra, onOpen, onAdd, 
   // Library tab tapped while open: back to the untouched Library.
   useEffect(() => { if (reset) { setQ(""); setSel({}); setFiltering(false); inputRef.current?.blur(); } }, [reset]);
 
+  const colorProgress = usePosterColors(films, isColorSort(sort) && !byRecent);
   const query = q.trim().toLowerCase();
   const list = useMemo(() => {
     const test = selTest(active);
@@ -1038,7 +1133,7 @@ function Library({ films: allFilms, customTags, extra, setExtra, onOpen, onAdd, 
       .filter((f) => !query || f.name.toLowerCase().includes(query) || f.year === query
         || [...f.directors, ...f.cast, ...f.dop, ...f.music].some((n) => n.toLowerCase().includes(query)))
       .sort(SORTS[byRecent ? "recent" : sort][1]);
-  }, [films, active, extra, query, sort, byRecent]);
+  }, [films, active, extra, query, sort, byRecent, colorProgress]);
   const grouped = sort === "az" && !byRecent;
   const letters = useMemo(() => {
     if (!grouped) return [{ letter: null, films: list }];
@@ -1081,7 +1176,7 @@ function Library({ films: allFilms, customTags, extra, setExtra, onOpen, onAdd, 
             <Icon d={I.sliders} size={15} sw={2} />Filter{nActive > 0 && <span className="count tnum">{nActive}</span>}
           </button>
           <span className="lib-count tnum">
-            {list.length === films.length ? `${list.length} films` : `${list.length} of ${films.length}`}
+            {colorProgress ? `Colors ${colorProgress.done}/${colorProgress.of}` : list.length === films.length ? `${list.length} films` : `${list.length} of ${films.length}`}
             {(nActive > 0 || extra) && <button className="link" onClick={() => reflow(() => { setSel({}); setExtra(null); })}>Clear</button>}
           </span>
           {view === "wall" && !(nActive > 0 || extra) && (
@@ -1094,7 +1189,7 @@ function Library({ films: allFilms, customTags, extra, setExtra, onOpen, onAdd, 
             </span>
           )}
           <label className="sort">
-            {SORTS[byRecent ? "recent" : sort][0]}<Icon d={I.down} size={12} sw={2.6} />
+            {(([l, , short]) => short || l)(SORTS[byRecent ? "recent" : sort])}<Icon d={I.down} size={12} sw={2.6} />
             <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sort by">
               {Object.entries(SORTS).map(([k, [l]]) => <option key={k} value={k}>{l}</option>)}
             </select>
@@ -1437,7 +1532,8 @@ function ListPage({ nav = "in", below = false, entry, films, backLabel, onBack, 
   useSwipeBack(ref, onBack);
   const person = entry.kind === "person" ? entry.label : null;
   const [sort, setSort] = useState(person ? "oldest" : "az");
-  const list = useMemo(() => films.filter(entry.test).sort(SORTS[sort][1]), [films, entry, sort]);
+  const colorProgress = usePosterColors(films, isColorSort(sort));
+  const list = useMemo(() => films.filter(entry.test).sort(SORTS[sort][1]), [films, entry, sort, colorProgress]);
   const roles = person ? ROLES.map(([k, l]) => [l, list.filter((f) => f[k].includes(person)).length]).filter(([, n]) => n) : [];
   const rated = list.filter((f) => f.rating != null);
   const avg = rated.length > 1 ? rated.reduce((n, f) => n + f.rating, 0) / rated.length : null;
@@ -1468,7 +1564,7 @@ function ListPage({ nav = "in", below = false, entry, films, backLabel, onBack, 
         <div className="lib-bar list-sort">
           <span className="lib-count tnum muted">{list.length === 1 ? "1 film" : list.length + " films"}</span>
           <label className="sort">
-            {SORTS[sort][0]}<Icon d={I.down} size={12} sw={2.6} />
+            {SORTS[sort][2] || SORTS[sort][0]}<Icon d={I.down} size={12} sw={2.6} />
             <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sort by">
               {Object.entries(SORTS).map(([k, [l]]) => <option key={k} value={k}>{l}</option>)}
             </select>
