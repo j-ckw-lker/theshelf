@@ -971,11 +971,14 @@ const selTest = (active, skip) => (f) => active.every(([g, , opts]) => g === ski
 // ─── POSTER COLOR ───────────────────────────────────────────────────────
 // Sorting by color needs each poster's dominant hue. Read once per poster from a 92px thumbnail and
 // remembered per poster path (a new custom poster gets read again). Stored as [hue, colorfulness, lightness].
-// Most posters are black with a splash of color, so the hue comes only from genuinely colored pixels,
-// weighted by how vivid they are; posters with too little color count as black-and-white and sort by lightness.
-const posterColors = readJSON("shelf-colors", {});
+// Most posters are black with a splash of color, so the hue comes only from genuinely colored pixels, and
+// mostly from how much of the poster a color covers: a red cape on a big blue poster is still a blue poster.
+// Posters with too little color count as black-and-white. (v2: area-weighted; v1 let small vivid accents win.)
+const COLOR_KEY = "shelf-colors-v2";
+store.set("shelf-colors", ""); // the v1 readings, no longer used
+const posterColors = readJSON(COLOR_KEY, {});
 // Saved as it goes (every couple dozen posters), so leaving the app mid-read loses almost nothing.
-const saveColors = () => store.set("shelf-colors", JSON.stringify(posterColors));
+const saveColors = () => store.set(COLOR_KEY, JSON.stringify(posterColors));
 const loadImg = (src) => new Promise((ok, fail) => {
   const im = new Image();
   im.crossOrigin = "anonymous";
@@ -999,8 +1002,9 @@ function readColor(im) {
     if (ch < 0.12 || mx < 0.15) continue;
     let h = mx === r ? ((g - b) / ch) % 6 : mx === g ? (b - r) / ch + 2 : (r - g) / ch + 4;
     h = (h * 60 + 360) % 360;
-    const bin = Math.floor(h / 10) % 36, rad = (h * Math.PI) / 180;
-    w[bin] += ch; cs[bin] += ch * Math.cos(rad); sn[bin] += ch * Math.sin(rad);
+    // Weight leans on area: sqrt keeps vivid pixels ahead of dull ones without letting a small accent win.
+    const bin = Math.floor(h / 10) % 36, rad = (h * Math.PI) / 180, wt = Math.sqrt(ch);
+    w[bin] += wt; cs[bin] += wt * Math.cos(rad); sn[bin] += wt * Math.sin(rad);
     vivid += ch;
   }
   let peak = 0, best = -1;
@@ -1044,17 +1048,21 @@ function usePosterColors(films, on) {
   return progress;
 }
 // Rainbow order, which is also warm to cool: reds (starting from the deep pinks) through orange, yellow,
-// green, blue, violet. Then black-and-white posters, light to dark, then anything without a readable poster.
-const HUE_START = 345, NEUTRAL = 5;
+// green, blue, violet, pink. The wheel is cut into 15 bands; inside a band posters run by brightness,
+// alternating dark→light and light→dark, so each band hands off to the next at a similar brightness
+// instead of strobing. The last band ends light, right where the black-and-white posters begin
+// (light to dark). Anything without a readable poster goes last.
+const HUE_START = 345, NEUTRAL = 5, BAND = 24;
 const colorRank = (f) => {
   const c = posterColors[f.posterPath];
-  if (!c) return 2000;
-  if (c[1] < NEUTRAL) return 1000 + (100 - c[2]);
-  return (c[0] - HUE_START + 360) % 360;
+  if (!c) return 20000;
+  if (c[1] < NEUTRAL) return 10000 + (100 - c[2]);
+  const rot = (c[0] - HUE_START + 360) % 360, band = Math.floor(rot / BAND);
+  return band * 200 + (band % 2 ? 100 - c[2] : c[2]) + (rot % BAND) / 100;
 };
 const byColor = (dir) => (a, b) => {
   const x = colorRank(a), y = colorRank(b);
-  const xs = x >= 1000, ys = y >= 1000;
+  const xs = x >= 10000, ys = y >= 10000;
   if (xs !== ys) return xs ? 1 : -1; // colored posters first either way
   return (xs ? x - y : dir * (x - y)) || a.sortKey.localeCompare(b.sortKey);
 };
