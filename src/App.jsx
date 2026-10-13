@@ -82,9 +82,20 @@ function useData() {
   const [customTags, setCustomTags] = useStored("shelf-customtags", []);
   const [programs, setPrograms] = useStored("shelf-programs", []);
   const [labels, setLabels] = useStored("shelf-labels", []); // labels you've typed, offered as chips from then on
+  // On deck: a short running pool of films you might watch this week. { key, added, tonight? }
+  const [deck, setDeck] = useStored("shelf-deck", []);
   const retag = (fn) => setUserData((d) => Object.fromEntries(Object.entries(d).map(([k, u]) => [k, u.tags ? { ...u, tags: fn(u.tags) } : u])));
   return {
-    userData, added, want, watchLog, customTags, programs, labels,
+    userData, added, want, watchLog, customTags, programs, labels, deck,
+    setDeck,
+    toggleDeck: (k) => setDeck((d) => (d.some((x) => x.key === k) ? d.filter((x) => x.key !== k) : [...d, { key: k, added: todayISO() }])),
+    removeDeck: (k) => setDeck((d) => d.filter((x) => x.key !== k)),
+    keepDeck: (k) => setDeck((d) => d.map((x) => (x.key === k ? { ...x, added: todayISO() } : x))),
+    // Only one film is "tonight" at a time; pinning another unpins the first.
+    pinTonight: (k) => setDeck((d) => d.map((x) => {
+      const { tonight, ...rest } = x;
+      return x.key === k ? { ...rest, tonight: todayISO() } : rest;
+    })),
     addLabel: (name) => setLabels((l) => (l.includes(name) ? l : [...l, name])),
     removeLabel: (name) => setLabels((l) => l.filter((x) => x !== name)),
     // Letterboxd diary import: { filmKey: [{date, rating}] }. Anything already logged here wins on the same date.
@@ -107,10 +118,14 @@ function useData() {
     addFilm: (f) => setAdded((a) => [...a, { addedAt: todayISO(), ...f, userAdded: true }]),
     patchAdded: (k, patch) => setAdded((a) => a.map((f) => (fkey(f) === k ? { ...f, ...patch } : f))),
     removeFilm: (k) => setAdded((a) => a.filter((f) => fkey(f) !== k)),
-    logWatch: (k, date = todayISO(), rating) => setWatchLog((w) => ({
-      ...w,
-      [k]: [...entriesOf(w[k]).filter((e) => e.date !== date), { date, ...(rating != null ? { rating } : {}) }].sort((a, b) => a.date.localeCompare(b.date)),
-    })),
+    logWatch: (k, date = todayISO(), rating) => {
+      setWatchLog((w) => ({
+        ...w,
+        [k]: [...entriesOf(w[k]).filter((e) => e.date !== date), { date, ...(rating != null ? { rating } : {}) }].sort((a, b) => a.date.localeCompare(b.date)),
+      }));
+      // Watched it: it comes off deck (unless the watch you logged predates putting it there).
+      setDeck((d) => (d.some((x) => x.key === k && date >= x.added) ? d.filter((x) => !(x.key === k && date >= x.added)) : d));
+    },
     unlogWatch: (k, date) => setWatchLog((w) => {
       const left = date ? entriesOf(w[k]).filter((e) => e.date !== date) : [];
       const { [k]: _, ...rest } = w;
@@ -139,8 +154,9 @@ function useData() {
       if (p.customTags) setCustomTags(p.customTags);
       if (p.programs) setPrograms(p.programs);
       if (p.labels) setLabels(p.labels);
+      if (p.deck) setDeck(p.deck);
     },
-    exportPayload: () => ({ userData, added, want, watchLog, customTags, programs, labels }),
+    exportPayload: () => ({ userData, added, want, watchLog, customTags, programs, labels, deck }),
   };
 }
 
@@ -148,7 +164,7 @@ function useData() {
 // Keeps a copy of everything personal on the server (api/sync.js), locked with a passphrase:
 // saves a moment after each change, checks for newer copies when the app opens or comes back,
 // and merges when two devices both changed things. A new install just enters the passphrase.
-const SYNC_FIELDS = ["userData", "added", "want", "watchLog", "customTags", "programs", "labels"];
+const SYNC_FIELDS = ["userData", "added", "want", "watchLog", "customTags", "programs", "labels", "deck"];
 const hasPersonal = (d) => !!(Object.keys(d.userData || {}).length || (d.added || []).length || Object.keys(d.watchLog || {}).length
   || (d.customTags || []).length || (d.programs || []).length || (d.labels || []).length);
 const unionBy = (a = [], b = [], key) => { const m = new Map(); a.forEach((x) => m.set(key(x), x)); b.forEach((x) => m.set(key(x), x)); return [...m.values()]; };
@@ -167,6 +183,7 @@ function mergeDocs(server = {}, local = {}) {
     programs: unionBy(server.programs, local.programs, (p) => p.id),
     want: unionBy(server.want, local.want, (w) => w.film + "|" + w.year),
     labels: [...new Set([...(server.labels || []), ...(local.labels || [])])],
+    deck: unionBy(server.deck, local.deck, (d) => d.key),
   };
 }
 
@@ -358,6 +375,7 @@ const I = {
   you: <><circle cx="12" cy="8.5" r="4" /><path d="M4.5 20.5c1.2-3.8 4-5.8 7.5-5.8s6.3 2 7.5 5.8" /></>,
   calendar: <><rect x="4" y="5" width="16" height="15" rx="2" /><path d="M4 10h16M9 3v4M15 3v4" /></>,
   tag: <><path d="M3.5 12.2V4.5a1 1 0 0 1 1-1h7.7l8.3 8.3a1 1 0 0 1 0 1.4l-7.1 7.1a1 1 0 0 1-1.4 0Z" /><circle cx="8" cy="8" r="1.4" /></>,
+  moon: <path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z" />,
   cloud: <path d="M7 18a4.5 4.5 0 0 1-.6-9A6 6 0 0 1 18 8.5a4 4 0 0 1-.5 9.5Z" />,
   list: <><path d="M9 6h11M9 12h11M9 18h11" /><circle cx="4.5" cy="6" r="1" fill="currentColor" /><circle cx="4.5" cy="12" r="1" fill="currentColor" /><circle cx="4.5" cy="18" r="1" fill="currentColor" /></>,
 };
@@ -688,9 +706,12 @@ function usePullToRefresh(onRefresh, enabled) {
   return { pull, refreshing, dragging: pull > 0 && !refreshing };
 }
 
-function Home({ films, defs, recipes, filters, home, setHome, onOpen, onSeeAll, onSearch, onFilters, onPair, onDoubles, saved = 0, active }) {
+function Home({ films, defs, recipes, filters, home, setHome, onOpen, onSeeAll, onSearch, onFilters, onPair, onDoubles, saved = 0, active, deck = [], deckDays = 7, deckPair, finish, onDeckPin, onDeckRemove, onDeckPick, onDeckAll }) {
   const eligible = useMemo(() => films.filter(filterTest(defs, filters)), [films, defs, filters]);
-  const pick = pickFrom(eligible, home.date, home.pick);
+  // A film pinned for tonight from On deck takes the hero; otherwise it's the day's pick.
+  const tonight = deck.find((x) => x.tonight);
+  const daily = pickFrom(eligible, home.date, home.pick);
+  const pick = tonight ? tonight.f : daily;
   const extra = home.more || 0;
   const [deal] = usePref("shelf-deal-count", 6);
   // Double features are a fixture now (they used to have a tab): always the first shelf.
@@ -739,6 +760,7 @@ function Home({ films, defs, recipes, filters, home, setHome, onOpen, onSeeAll, 
             <button className="icon-btn glass" onClick={onSearch} aria-label="Search the library"><Icon d={I.search} size={17} sw={2.2} /></button>
           </div>
           <div className="hero-bottom">
+            {tonight && <span className="caps-badge solid">Tonight</span>}
             {pick ? (
               <button className="hero-title" onClick={() => onOpen(pick)} aria-label={"Open " + pick.name}>
                 {pick.logo && !logoFailed
@@ -762,7 +784,9 @@ function Home({ films, defs, recipes, filters, home, setHome, onOpen, onSeeAll, 
               </div>
               <div className="btn-row">
                 <button className="btn btn-primary" onClick={() => onOpen(pick)}>Details</button>
-                <button className="btn btn-outline" onClick={another} disabled={eligible.length < 2}>Pick another</button>
+                {tonight
+                  ? <button className="btn btn-outline" onClick={() => onDeckPin(tonight)}>Not tonight</button>
+                  : <button className="btn btn-outline" onClick={another} disabled={eligible.length < 2}>Pick another</button>}
               </div>
             </>
           ) : (
@@ -776,6 +800,9 @@ function Home({ films, defs, recipes, filters, home, setHome, onOpen, onSeeAll, 
             <button className="filter-btn" onClick={onFilters}>{filterLabel}<Icon d={I.down} size={11} sw={2.8} /></button>
           </div>
         </div>
+
+        <DeckShelf deck={deck} days={deckDays} pair={deckPair} finish={finish} onPin={onDeckPin} onRemove={onDeckRemove}
+          onPick={onDeckPick} onSeeAll={onDeckAll} onPair={onPair} />
 
         <div className="deal-head">
           <span>Today's shelves</span>
@@ -1263,7 +1290,7 @@ function DirectorCard({ film, films, onOpen, onPerson, onPeek, wanted }) {
                 <span>{f.year}</span>
               </button>
             ) : (
-              <button key={f.key} className="shelf-item" onPointerDown={() => preloadFilm(f)} onClick={() => onOpen(f)}>
+              <button key={f.key} data-key={f.key} className="shelf-item" onPointerDown={() => preloadFilm(f)} onClick={() => onOpen(f)}>
                 <Poster path={f.posterPath} title={f.name} size="w185" />
                 <span>{f.year}{f.rating != null ? " · " + stars(f.rating) : ""}</span>
               </button>
@@ -1590,7 +1617,7 @@ function Diary({ films, watchLog, onOpen }) {
             {view === "list" ? list.map((e) => {
               const Tag = e.film ? "button" : "div";
               return (
-                <Tag key={e.id} className={"diary-row" + (e.film ? "" : " unowned")} {...(e.film ? { onClick: () => onOpen(e.film), onPointerDown: () => preloadFilm(e.film) } : {})}>
+                <Tag key={e.id} className={"diary-row" + (e.film ? "" : " unowned")} {...(e.film ? { "data-key": e.film.key, onClick: () => onOpen(e.film), onPointerDown: () => preloadFilm(e.film) } : {})}>
                   <span className="diary-day"><b className="tnum">{+e.date.slice(8)}</b><i>{DOW[day(e.date).getDay()]}</i></span>
                   {e.film ? <Poster path={e.film.posterPath} title={e.title} size="w92" className="thumb" /> : <span className="thumb poster-empty" aria-hidden="true" />}
                   <span className="body">
@@ -1602,7 +1629,7 @@ function Diary({ films, watchLog, onOpen }) {
             }) : (
               <div className="wall diary-wall" style={{ "--cols": 4 }}>
                 {list.map((e) => e.film ? (
-                  <button key={e.id} onClick={() => onOpen(e.film)} onPointerDown={() => preloadFilm(e.film)} aria-label={`${e.title}, ${e.date}`}>
+                  <button key={e.id} data-key={e.film.key} onClick={() => onOpen(e.film)} onPointerDown={() => preloadFilm(e.film)} aria-label={`${e.title}, ${e.date}`}>
                     <Poster path={e.film.posterPath} title={e.title} size="w185" />
                     <span className="diary-badge tnum">{+e.date.slice(8)}</span>
                   </button>
@@ -1650,6 +1677,7 @@ function Prefs({ finish, setFinish }) {
   const [brk, setBrk] = usePref("shelf-break-min", 15);
   const [countDigital, setCountDigital] = usePref("shelf-count-digital", false);
   const [hideSell, setHideSell] = usePref("shelf-hide-sell", false);
+  const [deckDays, setDeckDays] = usePref("shelf-deck-days", 7);
   const [hiddenTagsPref] = usePref("shelf-hidden-tags", "");
   const sellRemoved = hiddenTagsPref.split(",").includes("sell");
   return (
@@ -1670,6 +1698,13 @@ function Prefs({ finish, setFinish }) {
           <PickRow label="Shelves per deal" value={deal} options={[[3, "3"], [6, "6"], [9, "9"]]} onChange={setDeal} />
         </div>
         <p className="foot pref-foot">Off: Home keeps the same pick all day until you tap Pick another.</p>
+      </section>
+      <section>
+        <div className="section-label caps pref-sec">On deck</div>
+        <div className="you-group">
+          <PickRow label="Films stay on deck" value={deckDays} options={[[3, "3 days"], [5, "5 days"], [7, "7 days"], [10, "10 days"], [14, "14 days"]]} onChange={setDeckDays} />
+        </div>
+        <p className="foot pref-foot">A film also leaves the moment you log a watch of it.</p>
       </section>
       <section>
         <div className="section-label caps pref-sec">Double features</div>
@@ -1855,6 +1890,7 @@ function Wishlist({ want, films, onOpenWant, onNew }) {
   // an old "new" want you now own was probably bought, so it gets flagged instead.
   const ownedOf = (w) => owned.get(wantId(w).toLowerCase());
   const kindOf = (w) => (w.set ? "set" : w.kind === "upgrade" || (ownedOf(w) && w.store) ? "upgrade" : "new");
+  const tmdbOf = (w) => w.tmdb || ownedOf(w)?.tmdb || art[wantId(w)]?.tmdb || null;
   const pathOf = (w) => w.poster || owned.get(wantId(w).toLowerCase())?.posterPath || art[wantId(w)]?.poster || null;
   const open = want.filter((w) => !w.bought);
   const got = want.filter((w) => w.bought);
@@ -1882,6 +1918,7 @@ function Wishlist({ want, films, onOpenWant, onNew }) {
             {w.store && <span>{w.store}</span>}
             {w.price != null && <span>{usd(w.price)}</span>}
           </span>
+          {!w.set && <ScoreLine tmdbId={tmdbOf(w)} className="critics small" />}
         </span>
       </button>
     );
@@ -2022,7 +2059,7 @@ function PeekSheet({ f, onWant, wanted, onOwn, onClose }) {
 }
 
 // ─── FILM PAGE ──────────────────────────────────────────────────────────
-function FilmPage({ nav = "in", below = false, onPeek, wanted, film, films, ix, onNight, onBuildAround, allTags, backLabel, onBack, onOpen, onPerson, onUpdate, onLog, onUnlog, onRemove, onPicker, onAddTag, onRemoveTag, onEditCopy, onEditDetails }) {
+function FilmPage({ nav = "in", below = false, onPeek, wanted, deckItem, deckDays = 7, onDeckToggle, film, films, ix, onNight, onBuildAround, allTags, backLabel, onBack, onOpen, onPerson, onUpdate, onLog, onUnlog, onRemove, onPicker, onAddTag, onRemoveTag, onEditCopy, onEditDetails }) {
   const [note, setNote] = useState(film.note);
   const [newTag, setNewTag] = useState(null);
   const [editTags, setEditTags] = useState(false);
@@ -2091,6 +2128,7 @@ function FilmPage({ nav = "in", below = false, onPeek, wanted, film, films, ix, 
               {film.runtime && <span>{runtimeLabel(film.runtime)}</span>}
               {film.rating != null && <span className="accent">{stars(film.rating)}</span>}
             </div>
+            <ScoreLine tmdbId={film.tmdb} />
           </div>
         </div>
 
@@ -2099,8 +2137,11 @@ function FilmPage({ nav = "in", below = false, onPeek, wanted, film, films, ix, 
             <button className={"btn " + (loggedToday ? "btn-done" : "btn-primary")} onClick={() => setLogging(true)}>
               {loggedToday ? <><Icon d={I.check} size={16} sw={2.6} />Watched today</> : "Log a watch"}
             </button>
-            <button className="btn btn-outline" onClick={() => onPicker("poster")} disabled={!film.tmdb}>Poster & banner</button>
+            <button className={"btn " + (deckItem ? "btn-done deck-on" : "btn-outline")} aria-pressed={!!deckItem} onClick={() => onDeckToggle(film)}>
+              <Icon d={deckItem ? I.check : I.plus} size={16} sw={2.6} />On deck
+            </button>
           </div>
+          {deckItem && <div className="deck-hint">{deckItem.tonight ? "Pinned for tonight. " : `On deck until ${deckUntil(deckItem, deckDays)}. `}Tap again to take it off.</div>}
 
           <section>
             <div className="stat-head" style={{ marginBottom: 8 }}>
@@ -2795,6 +2836,8 @@ function Stats({ films, onPerson, onLabel }) {
         ))}
       </section>
 
+      <CriticsSection films={films} />
+
       <section className="stat-section" style={{ gap: 0 }}>
         <h2 style={{ marginBottom: 6 }}>Series</h2>
         <div className="list-row"><span className="grow muted">Complete on your shelf</span><span className="tnum">{s.complete}</span></div>
@@ -3207,6 +3250,378 @@ function Backup({ D, sync, films, bare }) {
 }
 
 // Hidden tabs stay built but skip re-rendering unless their own inputs change.
+// ─── CRITIC SCORES ──────────────────────────────────────────────────────
+// IMDb, Rotten Tomatoes and Metascore from OMDb, through api/omdb.js. Until OMDB_API_KEY is set in
+// Vercel the function answers 503 and every score in the app stays hidden. Cached here for a month.
+const scoreCache = readJSON("shelf-scores", {});
+const SCORE_TTL = 30 * 864e5;
+const scoreState = { off: false, subs: new Set(), inflight: new Map(), saveT: null };
+const scoreNotify = () => scoreState.subs.forEach((f) => f());
+const scoreSave = () => {
+  clearTimeout(scoreState.saveT);
+  scoreState.saveT = setTimeout(() => store.set("shelf-scores", JSON.stringify(scoreCache)), 400);
+};
+const scoreFresh = (id) => { const c = scoreCache[id]; return c && Date.now() - c.at < SCORE_TTL ? c : null; };
+function fetchScore(tmdbId) {
+  const id = String(tmdbId || "");
+  if (!/^\d+$/.test(id) || scoreState.off) return Promise.resolve(null);
+  const hit = scoreFresh(id);
+  if (hit) return Promise.resolve(hit);
+  if (scoreState.inflight.has(id)) return scoreState.inflight.get(id);
+  const p = fetch("/api/omdb?tmdb=" + id).then(async (r) => {
+    // No key yet (503), or no such function (a local build serving the app shell instead): hide scores.
+    if (r.status === 503 || r.status === 404 || !(r.headers.get("content-type") || "").includes("json")) {
+      if (!scoreState.off) { scoreState.off = true; scoreNotify(); }
+      return null;
+    }
+    if (!r.ok) return null; // daily limit or a hiccup: try again another time
+    const j = await r.json();
+    scoreCache[id] = { ...j, at: Date.now() };
+    scoreSave(); scoreNotify();
+    return scoreCache[id];
+  }).catch(() => null).finally(() => scoreState.inflight.delete(id));
+  scoreState.inflight.set(id, p);
+  return p;
+}
+// Many at once, a few at a time. Stops early if scores turn out to be off.
+async function fetchScores(ids, onProgress) {
+  const todo = [...new Set(ids.map(String))].filter((id) => /^\d+$/.test(id) && !scoreFresh(id));
+  let done = 0;
+  const worker = async () => {
+    while (todo.length && !scoreState.off) { await fetchScore(todo.shift()); done++; onProgress?.(done); }
+  };
+  await Promise.all([worker(), worker(), worker(), worker()]);
+  return done;
+}
+function useScores() {
+  const [, bump] = useState(0);
+  useEffect(() => {
+    const f = () => bump((n) => n + 1);
+    scoreState.subs.add(f);
+    return () => scoreState.subs.delete(f);
+  }, []);
+  return scoreState.off ? null : scoreCache;
+}
+function useScore(tmdbId) {
+  const all = useScores();
+  useEffect(() => { if (tmdbId) fetchScore(tmdbId); }, [tmdbId]);
+  const s = all && all[String(tmdbId)];
+  return s && s.found ? s : null;
+}
+const scoreBits = (s) => [
+  s.imdb != null && ["IMDb", s.imdb.toFixed(1)],
+  s.rt != null && ["RT", s.rt + "%"],
+  s.meta != null && ["Metascore", String(s.meta)],
+].filter(Boolean);
+function ScoreLine({ tmdbId, className = "critics" }) {
+  const s = useScore(tmdbId);
+  if (!s) return null;
+  const bits = scoreBits(s);
+  if (!bits.length) return null;
+  return (
+    <div className={className + " tnum"} aria-label="Critic scores">
+      {bits.map(([k, v]) => <span key={k}><i>{k}</i> {v}</span>)}
+    </div>
+  );
+}
+// One critics number for comparisons: Metascore when there is one, else RT, else IMDb ×10.
+const criticOf = (s) => (!s || !s.found ? null : s.meta != null ? { v: s.meta, src: "Metascore" } : s.rt != null ? { v: s.rt, src: "RT" } : s.imdb != null ? { v: Math.round(s.imdb * 10), src: "IMDb" } : null);
+
+function CriticsSection({ films }) {
+  const all = useScores();
+  const [busy, setBusy] = useState(null);
+  const rated = useMemo(() => films.filter((f) => f.rating != null && f.tmdb), [films]);
+  if (!all) return null;
+  const pairs = rated.map((f) => ({ f, c: criticOf(all[String(f.tmdb)]) })).filter((x) => x.c)
+    .map((x) => ({ ...x, you: Math.round(x.f.rating * 20), gap: Math.round(x.f.rating * 20) - x.c.v }));
+  const missing = rated.filter((f) => !scoreFresh(String(f.tmdb))).length;
+  const fetchMore = async () => {
+    // The free OMDb key allows about 1,000 lookups a day; take a bite and let the rest wait.
+    const batch = rated.filter((f) => !scoreFresh(String(f.tmdb))).slice(0, 300).map((f) => f.tmdb);
+    setBusy({ done: 0, of: batch.length });
+    await fetchScores(batch, (done) => setBusy({ done, of: batch.length }));
+    setBusy(null);
+  };
+  const avg = (xs) => Math.round(xs.reduce((a, b) => a + b, 0) / (xs.length || 1));
+  const kinder = pairs.filter((x) => x.gap > 0).sort((a, b) => b.gap - a.gap).slice(0, 5);
+  const harsher = pairs.filter((x) => x.gap < 0).sort((a, b) => a.gap - b.gap).slice(0, 5);
+  const close = pairs.filter((x) => Math.abs(x.gap) <= 10).length;
+  const row = (x) => (
+    <div className="list-row" key={x.f.key}>
+      <span className="grow">{x.f.name} <span className="muted tnum">{x.f.year}</span></span>
+      <span className="tnum critic-vs"><span className="accent">{stars(x.f.rating)}</span><span className="muted"> vs </span>{x.c.v}</span>
+    </div>
+  );
+  return (
+    <section className="stat-section" style={{ gap: 0 }}>
+      <h2 style={{ marginBottom: 6 }}>You vs the critics</h2>
+      {pairs.length >= 5 ? (
+        <>
+          <div className="list-row"><span className="grow muted">Your average, out of 100</span><span className="tnum accent">{avg(pairs.map((x) => x.you))}</span></div>
+          <div className="list-row"><span className="grow muted">Critics' average, same films</span><span className="tnum">{avg(pairs.map((x) => x.c.v))}</span></div>
+          <div className="list-row"><span className="grow muted">Within 10 points of them</span><span className="tnum">{Math.round((close / pairs.length) * 100)}%</span></div>
+          {kinder.length > 0 && <><div className="section-label caps critic-sub">You like more</div>{kinder.map(row)}</>}
+          {harsher.length > 0 && <><div className="section-label caps critic-sub">They like more</div>{harsher.map(row)}</>}
+        </>
+      ) : (
+        <span className="muted" style={{ fontSize: 14, padding: "4px 0 8px" }}>Fetch scores for your rated films to see where you and the critics part ways.</span>
+      )}
+      {missing > 0 && (
+        <div className="list-row">
+          <span className="grow muted tnum">{busy ? `Fetching ${busy.done} of ${busy.of}` : `${pairs.length} of ${rated.length} rated films compared`}</span>
+          <button className="link" onClick={fetchMore} disabled={!!busy}>{busy ? "Working" : "Fetch scores"}</button>
+        </div>
+      )}
+      <span className="muted" style={{ fontSize: 12, marginTop: 8 }}>Your stars ×20 against Metascore, or Rotten Tomatoes when there's no Metascore.</span>
+    </section>
+  );
+}
+
+// ─── ON DECK ────────────────────────────────────────────────────────────
+const dayDiff = (iso) => Math.round((Date.parse(todayISO() + "T12:00:00") - Date.parse(iso + "T12:00:00")) / 864e5);
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const deckAge = (it, days, long) => {
+  const d = dayDiff(it.added);
+  if (d >= days - 1 && days > 2) return "Leaves tomorrow";
+  if (d <= 0) return long ? "Added today" : "Today";
+  if (d === 1) return long ? "Added yesterday" : "Yesterday";
+  if (d < 7) { const w = WEEKDAYS[new Date(it.added + "T12:00:00").getDay()]; return long ? "Added " + w : w; }
+  return long ? `Added ${d} days ago` : d + " days";
+};
+const deckUntil = (it, days) => {
+  const d = new Date(it.added + "T12:00:00"); d.setDate(d.getDate() + days - 1);
+  return d.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
+};
+const totalRuntime = (list) => { const m = list.reduce((n, x) => n + (x.f.runtime || 0), 0); return m ? runtimeLabel(m) : null; };
+const filmsWord = (n) => n + (n === 1 ? " film" : " films");
+
+// The strongest double feature hiding in the deck, if there is one worth suggesting.
+function deckPairOf(ix, list) {
+  let best = null;
+  for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
+    const p = scorePair(ix, list[i].f, list[j].f, "build");
+    if (p && p.score >= 3 && (!best || p.score > best.score)) best = p;
+  }
+  return best;
+}
+function DeckPairCard({ pair, finish, onPair }) {
+  if (!pair) return null;
+  const plan = nightPlan(pair.a, pair.b, finish, getPref("shelf-break-min", 15));
+  const fin = (FINISH.find((x) => x[0] === finish) || [0, "11 PM"])[1];
+  return (
+    <button className="deck-pair" onClick={() => onPair(pair)}>
+      <span className="deck-pair-ic"><Icon d={I.doubles} size={17} sw={2} /></span>
+      <span className="grow">
+        <b>{pair.a.name}, then {pair.b.name}</b>
+        <span className="muted">{reasonLine(pair, 1)}{plan ? ` · start by ${plan.start} to finish by ${fin}` : ""}</span>
+      </span>
+      <Icon d={I.chev} size={14} sw={2.6} />
+    </button>
+  );
+}
+
+function DeckShelf({ deck, days, pair, finish, onPin, onRemove, onPick, onSeeAll, onPair }) {
+  const tonight = deck.find((x) => x.tonight);
+  return (
+    <section className="shelf deck-shelf" aria-label="On deck">
+      <div className="shelf-head">
+        <div>
+          <h2>On deck</h2>
+          <p className="tnum">{deck.length ? `${filmsWord(deck.length)} · this week` : "Nothing yet"}</p>
+        </div>
+        <span className="shelf-links">
+          {deck.length > 1 && <button className="link deck-pick" onClick={onPick}><Icon d={I.shuffle} size={15} sw={2.2} />Pick for me</button>}
+          <button className="link" onClick={onSeeAll}>See all</button>
+        </span>
+      </div>
+      {deck.length ? (
+        <div className="shelf-row">
+          {deck.map((x) => {
+            const fading = dayDiff(x.added) >= days - 1 && days > 2;
+            return (
+              <div key={x.key} className={"deck-tile" + (fading ? " fading" : "") + (x.tonight ? " tonight" : "")}>
+                <button className="shelf-item" data-key={x.key} onClick={() => onPin(x)} aria-pressed={!!x.tonight}
+                  aria-label={(x.tonight ? "Unpin " : "Watch tonight: ") + x.f.name}>
+                  <Poster path={x.f.posterPath} title={x.f.name} size="w185" />
+                  <span className={fading ? "accent" : ""}>{x.tonight ? "Tonight" : deckAge(x, days)}</span>
+                </button>
+                <button className="deck-x" onClick={() => onRemove(x)} aria-label={"Remove " + x.f.name + " from On deck"}><Icon d={I.close} size={12} sw={3} /></button>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="deck-empty">Empty. Toss films in from any film page, or long-press a poster.</p>
+      )}
+      {!tonight && <DeckPairCard pair={pair} finish={finish} onPair={onPair} />}
+    </section>
+  );
+}
+
+function DeckPage({ deck, days, pair, finish, onOpen, onPin, onRemove, onKeep, onPick, onAdd, onPair }) {
+  const tonight = deck.find((x) => x.tonight);
+  const fresh = deck.filter((x) => !(dayDiff(x.added) >= days - 1 && days > 2));
+  const fading = deck.filter((x) => !fresh.includes(x));
+  const total = totalRuntime(deck);
+  const row = (x, leaving) => (
+    <div key={x.key} className={"deck-row" + (leaving ? " fading" : "")}>
+      <button className="deck-row-main" data-key={x.key} onClick={() => onOpen(x.f)} onPointerDown={() => preloadFilm(x.f)}>
+        <span className={"deck-thumb" + (x.tonight ? " on" : "")}><Poster path={x.f.posterPath} title={x.f.name} size="w92" className="thumb" /></span>
+        <span className="body">
+          <span className="title">{x.f.name} <span className="muted tnum">{x.f.year}</span></span>
+          <span className="meta">{[peopleLabel(x.f.directors), runtimeLabel(x.f.runtime)].filter(Boolean).join(" · ")}</span>
+          <span className={"meta small" + (leaving ? " accent" : "")}>{deckAge(x, days, true)}</span>
+        </span>
+      </button>
+      {leaving
+        ? <button className="deck-keep" onClick={() => onKeep(x)}>Keep</button>
+        : <button className={"deck-ib" + (x.tonight ? " on" : "")} onClick={() => onPin(x)} aria-pressed={!!x.tonight} aria-label={(x.tonight ? "Unpin " : "Watch tonight: ") + x.f.name}>
+            <Icon d={I.moon} size={20} sw={2} fill={x.tonight ? "currentColor" : "none"} />
+          </button>}
+      <button className="deck-ib" onClick={() => onRemove(x)} aria-label={"Remove " + x.f.name}><Icon d={I.close} size={16} sw={2.6} /></button>
+    </div>
+  );
+  return (
+    <div className="page deck-page">
+      <div className="page-head" style={{ flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
+        <h1>On deck</h1>
+        <span className="muted tnum" style={{ fontSize: 15 }}>{deck.length ? filmsWord(deck.length) + (total ? ` · ${total} of film` : "") : "Nothing on deck"}</span>
+      </div>
+      <div className="btn-row">
+        <button className="btn btn-primary" onClick={onPick} disabled={deck.length < 1}>Pick for me</button>
+        <button className="btn btn-outline" onClick={onAdd}><Icon d={I.plus} size={16} sw={2.4} />Add a film</button>
+      </div>
+      {tonight && (
+        <div className="deck-tonight">
+          <span className="caps-badge">Tonight</span>
+          <span className="grow">{tonight.f.name}</span>
+          <button className="link" onClick={() => onPin(tonight)}>Change</button>
+        </div>
+      )}
+      {deck.length === 0 && <div className="empty">Toss films in from any film page, or long-press a poster anywhere. They leave on their own after {days} days, or the moment you log a watch.</div>}
+      {fresh.length > 0 && <div><div className="section-label caps deck-sec">This week</div>{fresh.map((x) => row(x, false))}</div>}
+      {fading.length > 0 && <div><div className="section-label caps deck-sec">Leaving soon</div>{fading.map((x) => row(x, true))}</div>}
+      {pair && <div><div className="section-label caps deck-sec">Makes a night</div><DeckPairCard pair={pair} finish={finish} onPair={onPair} /></div>}
+      {deck.length > 0 && <p className="foot">Films leave on their own after {days} days, or the moment you log a watch. Change that in Preferences.</p>}
+    </div>
+  );
+}
+
+// Add to the deck from inside the deck: search the shelf, or take one you haven't watched in ages.
+function DeckAddSheet({ films, onDeck, onToggle, onClose }) {
+  const [q, setQ] = useState("");
+  const query = q.trim().toLowerCase();
+  const list = useMemo(() => {
+    if (query) return films.filter((f) => f.name.toLowerCase().includes(query) || f.directors.some((d) => d.toLowerCase().includes(query))).slice(0, 40);
+    return films.filter((f) => !f.tags.includes("sell")).slice().sort((a, b) => (a.lastWatched || "").localeCompare(b.lastWatched || "")).slice(0, 30);
+  }, [films, query]);
+  return (
+    <Sheet title="Add to On deck" tall onClose={onClose} left={<span />} right={<button className="right" onClick={onClose}>Done</button>}>
+      <label className="search" style={{ margin: 0 }}>
+        <Icon d={I.search} size={16} sw={2.2} />
+        <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Title or director" aria-label="Search your shelf" />
+      </label>
+      {!query && <div className="section-label caps" style={{ marginTop: 4 }}>Longest since a watch</div>}
+      <div className="deck-add-list">
+        {list.map((f) => {
+          const on = onDeck.has(f.key);
+          return (
+            <button key={f.key} className="film-row" onClick={() => onToggle(f)} aria-pressed={on}>
+              <Poster path={f.posterPath} title={f.name} size="w92" className="thumb" />
+              <span className="body">
+                <span className="title">{f.name} <span className="muted tnum">{f.year}</span></span>
+                <span className="meta">{f.lastWatched ? "Last watched " + fmtDate(f.lastWatched) : "Never logged"}</span>
+              </span>
+              <span className={"deck-check" + (on ? " on" : "")}><Icon d={on ? I.check : I.plus} size={16} sw={2.6} /></span>
+            </button>
+          );
+        })}
+        {list.length === 0 && <div className="empty">Nothing on your shelf matches "{q.trim()}".</div>}
+      </div>
+    </Sheet>
+  );
+}
+
+// Long-press any poster: the film lifts out with a short menu, like iOS.
+function PressMenu({ f, inDeck, onDeck, onLog, onDouble, onOpen, onClose }) {
+  useEffect(() => {
+    const k = (e) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, []);
+  const item = (label, icon, fn, cls = "") => (
+    <button role="menuitem" className={"press-item " + cls} onClick={() => { onClose(); fn(); }}>{label}<Icon d={icon} size={18} sw={2.2} /></button>
+  );
+  return createPortal(
+    <div className="press-scrim" onClick={onClose}>
+      <div className="press-box" onClick={(e) => e.stopPropagation()}>
+        <div className="press-poster"><Poster path={f.posterPath} title={f.name} size="w342" /></div>
+        <div className="press-menu" role="menu" aria-label={f.name}>
+          {item(inDeck ? "Remove from On deck" : "Add to On deck", inDeck ? I.close : I.plus, onDeck, "lead")}
+          {item("Log a watch", I.calendar, onLog)}
+          {item("Double it up", I.doubles, onDouble)}
+          {item("Open", I.chev, onOpen)}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function Toast({ toast, onAction }) {
+  if (!toast) return null;
+  return (
+    <div className="toast" role="status" key={toast.id}>
+      <span className="grow">{toast.text}</span>
+      {toast.action && <button className="link" onClick={onAction}>{toast.action}</button>}
+    </div>
+  );
+}
+
+// Hold a finger on anything with a data-key (a film's poster) to open its menu. Cancels if you move,
+// and swallows the tap that would otherwise follow. Right-click does the same on a computer.
+function useLongPress(onPress) {
+  const cb = useEvent(onPress);
+  useEffect(() => {
+    let timer = null, start = null, fired = false;
+    const cancel = () => { clearTimeout(timer); timer = null; };
+    const target = (e) => { const t = e.target.closest?.("[data-key]"); return t && !t.closest(".press-scrim") ? t : null; };
+    const onStart = (e) => {
+      fired = false;
+      const t = target(e);
+      if (!t || e.touches.length > 1) return;
+      start = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      cancel();
+      timer = setTimeout(() => { timer = null; fired = true; cb(t.dataset.key); }, 460);
+    };
+    const onMove = (e) => {
+      if (!timer) return;
+      const p = e.touches[0];
+      if (Math.hypot(p.clientX - start.x, p.clientY - start.y) > 9) cancel();
+    };
+    const onEnd = (e) => { cancel(); if (fired && e.cancelable) e.preventDefault(); };
+    const onClick = (e) => { if (fired) { fired = false; e.preventDefault(); e.stopPropagation(); } };
+    const onCtx = (e) => { const t = target(e); if (!t) return; e.preventDefault(); cancel(); if (!fired) cb(t.dataset.key); };
+    document.addEventListener("touchstart", onStart, { passive: true });
+    document.addEventListener("touchmove", onMove, { passive: true });
+    document.addEventListener("touchend", onEnd, { passive: false });
+    document.addEventListener("touchcancel", cancel);
+    document.addEventListener("scroll", cancel, true);
+    document.addEventListener("click", onClick, true);
+    document.addEventListener("contextmenu", onCtx);
+    return () => {
+      cancel();
+      document.removeEventListener("touchstart", onStart);
+      document.removeEventListener("touchmove", onMove);
+      document.removeEventListener("touchend", onEnd);
+      document.removeEventListener("touchcancel", cancel);
+      document.removeEventListener("scroll", cancel, true);
+      document.removeEventListener("click", onClick, true);
+      document.removeEventListener("contextmenu", onCtx);
+    };
+  }, []);
+}
+
 const HomeTab = memo(Home), LibraryTab = memo(Library), YouTab = memo(You);
 
 // ─── ROOT ───────────────────────────────────────────────────────────────
@@ -3273,6 +3688,45 @@ export default function App() {
   const [copyEdit, setCopyEdit] = useState(null);
   const [detailsFor, setDetailsFor] = useState(null);
 
+  // On deck: what's still in the running this week. Films drop off after the chosen number of days.
+  const [deckDays] = usePref("shelf-deck-days", 7);
+  const deck = useMemo(() => {
+    const today = todayISO();
+    return D.deck.filter((x) => byKey.has(x.key) && dayDiff(x.added) < deckDays)
+      .map((x) => ({ ...x, tonight: x.tonight === today, f: byKey.get(x.key) }));
+  }, [D.deck, byKey, deckDays, home.date]);
+  useEffect(() => {
+    const live = new Set(deck.map((x) => x.key));
+    if (D.deck.some((x) => !live.has(x.key))) D.setDeck((d) => d.filter((x) => live.has(x.key)));
+  }, [deck]);
+  const deckKeys = useMemo(() => new Set(deck.map((x) => x.key)), [deck]);
+  const deckPair = useMemo(() => (deck.length > 1 && deck.length <= 30 ? deckPairOf(ix, deck) : null), [deck, ix]);
+  const [toast, setToast] = useState(null);
+  const toastT = useRef(null);
+  const showToast = (t) => {
+    clearTimeout(toastT.current);
+    setToast({ ...t, id: Date.now() });
+    toastT.current = setTimeout(() => setToast(null), 2800);
+  };
+  const [press, setPress] = useState(null);   // long-pressed film key
+  const [logFor, setLogFor] = useState(null); // Log a watch from outside a film page
+  const [deckAdd, setDeckAdd] = useState(false);
+  const toggleDeck = (f, quiet) => {
+    const on = deckKeys.has(f.key);
+    D.toggleDeck(f.key);
+    if (quiet) return;
+    if (on) showToast({ text: f.name + " is off deck" });
+    else showToast({ text: `${f.name} is on deck · ${filmsWord(deck.length + 1)} this week`, action: "View", go: "deck" });
+  };
+  const pinDeck = (x) => D.pinTonight(x.tonight ? null : x.key);
+  const pickDeck = () => {
+    const pool = deck.filter((x) => !x.tonight);
+    if (!pool.length) return;
+    D.pinTonight(pool[Math.floor(Math.random() * pool.length)].key);
+  };
+  const logFilm = (key, date, rating) => { D.logWatch(key, date, rating); if (rating !== undefined) D.updateFilm(key, { rating }); };
+  useLongPress((key) => { if (byKey.has(key)) setPress(key); });
+
   // Films added by hand in the old app have no TMDB data yet: look them up once.
   const tried = useRef(new Set());
   useEffect(() => {
@@ -3292,7 +3746,7 @@ export default function App() {
   const top = stack.length ? stack[stack.length - 1] : null;
   const entryName = (e) => (typeof e === "string" ? byKey.get(e)?.name || "Back" : e.label);
   const listSeq = useRef(0);
-  useBodyLock(!!top || !!wantOpen || !!peek || !!adding || !!picking || showFilters || !!copyEdit || !!detailsFor || !!night);
+  useBodyLock(!!top || !!wantOpen || !!peek || !!adding || !!picking || showFilters || !!copyEdit || !!detailsFor || !!night || !!press || !!logFor || deckAdd);
 
   // Film pages use a plain iOS-style push: the page slides in the instant you tap (no screen snapshot
   // to wait for, unlike a view transition) and slides back out to the right.
@@ -3384,6 +3838,10 @@ export default function App() {
   const onFocusedE = useEvent(() => setSearchFocus(0));
   const onPersonE = useEvent(onPerson);
   const onLabelE = useEvent((l) => pushList({ kind: "label", label: l, test: (f) => f.copies.some((c) => c.label === l) }));
+  const onDeckPinE = useEvent(pinDeck);
+  const onDeckRemoveE = useEvent((x) => D.removeDeck(x.key));
+  const onDeckPickE = useEvent(pickDeck);
+  const onDeckAllE = useEvent(() => pushList({ kind: "deck", label: "On deck" }));
 
   return (
     <div className="app">
@@ -3392,7 +3850,8 @@ export default function App() {
       <div className={"under" + (covered ? " covered" : "")}>
       <main hidden={tab !== "home"}>
         <HomeTab films={shelfFilms} defs={defs} recipes={recipes} filters={filters} home={home} setHome={setHome} active={tab === "home"}
-          onOpen={openFilmE} onSeeAll={onSeeAllE} onSearch={onSearchE} onFilters={onFiltersE} onPair={setNight} onDoubles={onDoublesE} saved={D.programs.length} />
+          onOpen={openFilmE} onSeeAll={onSeeAllE} onSearch={onSearchE} onFilters={onFiltersE} onPair={setNight} onDoubles={onDoublesE} saved={D.programs.length}
+          deck={deck} deckDays={deckDays} deckPair={deckPair} finish={finish} onDeckPin={onDeckPinE} onDeckRemove={onDeckRemoveE} onDeckPick={onDeckPickE} onDeckAll={onDeckAllE} />
       </main>
       {/* Tabs stay built in the background, so switching back is instant and keeps your place. */}
       <main hidden={tab !== "library"}><LibraryTab films={films} customTags={D.customTags} extra={extra} setExtra={setExtra} onOpen={openFilmE} onAdd={onAddE} searchFocus={searchFocus} onFocused={onFocusedE} reset={libReset} /></main>
@@ -3408,6 +3867,8 @@ export default function App() {
         const nav = isTop && leaving ? "leaving" : "in";
         const below = !isTop && !leaving;
         const page = (children) => <StackPage key={depth + ":" + e.id} nav={nav} below={below} label={e.label} backLabel={label} onBack={back}>{children}</StackPage>;
+        if (typeof e !== "string" && e.kind === "deck") return page(<DeckPage deck={deck} days={deckDays} pair={deckPair} finish={finish} onOpen={openFilm} onPin={pinDeck}
+          onRemove={(x) => D.removeDeck(x.key)} onKeep={(x) => D.keepDeck(x.key)} onPick={pickDeck} onAdd={() => setDeckAdd(true)} onPair={setNight} />);
         if (typeof e !== "string" && e.kind === "wishlist") return page(<Wishlist want={D.want} films={films} onOpenWant={onOpenWantE} onNew={onNewWantE} />);
         if (typeof e !== "string" && e.kind === "diary") return page(<Diary films={films} watchLog={D.watchLog} onOpen={openFilm} />);
         if (typeof e !== "string" && e.kind === "stats") return page(<Stats films={shelfFilms} onPerson={onPerson} onLabel={onLabelE} />);
@@ -3423,9 +3884,10 @@ export default function App() {
         const f = byKey.get(e);
         if (!f) return null;
         return (
-          <FilmPage key={depth + ":" + e} nav={nav} below={below} onPeek={setPeek} wanted={wanted} film={f} films={films} ix={ix} onNight={setNight} onBuildAround={buildAround} allTags={allTags} onAddTag={D.addTag} onRemoveTag={D.removeTag}
+          <FilmPage key={depth + ":" + e} nav={nav} below={below} onPeek={setPeek} wanted={wanted}
+            deckItem={deck.find((x) => x.key === f.key)} deckDays={deckDays} onDeckToggle={(film) => toggleDeck(film)} film={f} films={films} ix={ix} onNight={setNight} onBuildAround={buildAround} allTags={allTags} onAddTag={D.addTag} onRemoveTag={D.removeTag}
             onEditCopy={(c) => setCopyEdit({ key: f.key, copy: c })} onEditDetails={() => setDetailsFor(f.key)} backLabel={label} onBack={back} onOpen={openFilm} onPerson={onPerson}
-            onUpdate={D.updateFilm} onLog={(key, date, rating) => { D.logWatch(key, date, rating); if (rating !== undefined) D.updateFilm(key, { rating }); }} onUnlog={D.unlogWatch} onRemove={D.removeFilm} onPicker={(t) => setPicking({ key: f.key, tab: t })} />
+            onUpdate={D.updateFilm} onLog={logFilm} onUnlog={D.unlogWatch} onRemove={D.removeFilm} onPicker={(t) => setPicking({ key: f.key, tab: t })} />
         );
       })}
 
@@ -3477,6 +3939,16 @@ export default function App() {
           onWant={() => D.addWant({ film: peek.name, year: peek.year, poster: peek.posterPath || undefined, tmdb: peek.tmdb, store: "", label: "" })}
           onOwn={() => { setPeek(null); setAdding({ name: peek.name, year: peek.year }); }} onClose={() => setPeek(null)} />
       )}
+      {deckAdd && <DeckAddSheet films={films} onDeck={deckKeys} onToggle={(f) => toggleDeck(f, true)} onClose={() => setDeckAdd(false)} />}
+      {logFor && byKey.get(logFor) && <LogSheet film={byKey.get(logFor)} onLog={logFilm} onUnlog={D.unlogWatch} onClose={() => setLogFor(null)} />}
+      {press && byKey.get(press) && (() => {
+        const f = byKey.get(press);
+        return (
+          <PressMenu f={f} inDeck={deckKeys.has(f.key)} onClose={() => setPress(null)} onDeck={() => toggleDeck(f)}
+            onLog={() => setLogFor(f.key)} onDouble={() => buildAround(f)} onOpen={() => openFilm(f)} />
+        );
+      })()}
+      <Toast toast={toast} onAction={() => { const t = toast; setToast(null); if (t?.go === "deck" && !(top && top.kind === "deck")) pushList({ kind: "deck", label: "On deck" }); }} />
       {adding && <AddSheet prefill={adding} existing={films} onAdd={(f) => { D.addFilm({ ...f, addedAt: todayISO() }); setAdding(null); }} onClose={() => setAdding(null)} />}
     </div>
   );
