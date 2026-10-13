@@ -622,7 +622,11 @@ html[data-vt="reflow"]::view-transition-old(root), html[data-vt="reflow"]::view-
 /* ─── On deck ─── */
 .caps-badge { align-self: flex-start; font-size: 12px; font-weight: 700; letter-spacing: 0.9px; text-transform: uppercase; color: var(--accent-text); }
 .caps-badge.solid { color: var(--bg); background: var(--accent); border-radius: 6px; padding: 3px 8px; }
-.deck-shelf { margin-top: 26px; }
+/* On deck is yours (pins, removals), not dealt: it sits on its own tinted band so it never blurs into Today's shelves. */
+.deck-shelf { margin-top: 26px; padding: 18px 0 20px; background: var(--bg-2); border-top: 0.5px solid var(--rule-soft); border-bottom: 0.5px solid var(--rule-soft); }
+.deck-shelf .deck-pair { background: var(--bg); }
+.deck-shelf + .deal-head { margin-top: 26px; padding-top: 0; border-top: 0; }
+.deck-shelf + .deal-head > span:first-child { font-size: 12px; font-weight: 600; letter-spacing: 0.9px; text-transform: uppercase; color: var(--label-2); }
 .deck-shelf .shelf-links { display: flex; gap: 16px; align-items: center; }
 .deck-pick { display: inline-flex; align-items: center; gap: 5px; }
 .deck-tile { position: relative; flex-shrink: 0; scroll-snap-align: start; transition: opacity 0.2s; }
