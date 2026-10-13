@@ -108,7 +108,9 @@ img { display: block; }
 .shelf-head { padding: 0 20px 10px; display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
 .shelf-head h2 { margin: 0; font-size: 18px; font-weight: 600; }
 .shelf-head p { margin: 1px 0 0; font-size: 13px; color: var(--label-2); }
-.shelf-row { display: flex; gap: 10px; overflow-x: auto; padding: 0 20px; scrollbar-width: none; scroll-snap-type: x proximity; scroll-padding: 20px; }
+/* Mandatory snapping: a fling glides and settles on a poster edge in one motion, like the App Store,
+   instead of coasting and then getting yanked into place. Sideways overscroll stays inside the row. */
+.shelf-row { display: flex; gap: 10px; overflow-x: auto; padding: 0 20px; scrollbar-width: none; scroll-snap-type: x mandatory; scroll-padding-inline: 20px; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; }
 .shelf-row::-webkit-scrollbar { display: none; }
 .shelf-item { width: 98px; flex-shrink: 0; display: flex; flex-direction: column; gap: 6px; text-align: left; scroll-snap-align: start; }
 .shelf-item .poster { width: 98px; transition: transform 0.15s; }

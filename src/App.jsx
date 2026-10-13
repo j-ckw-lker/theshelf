@@ -667,14 +667,22 @@ function usePullToRefresh(onRefresh, enabled) {
   const busy = useRef(false);
   useEffect(() => {
     if (!enabled) return;
-    let startY = null, pulling = false;
+    let startY = null, startX = 0, axis = null, pulling = false;
     const set = (v) => { pullRef.current = v; setPull(v); };
     const onStart = (e) => {
       if (busy.current || window.scrollY > 0 || document.body.style.overflow === "hidden") return;
-      startY = e.touches[0].clientY;
+      startY = e.touches[0].clientY; startX = e.touches[0].clientX; axis = null;
     };
     const onMove = (e) => {
       if (startY == null) return;
+      // Lock the gesture's direction on its first few pixels: a sideways swipe through a shelf row
+      // is never a pull, even if the finger drifts downward along the way.
+      if (!axis) {
+        const dx = Math.abs(e.touches[0].clientX - startX), dy = Math.abs(e.touches[0].clientY - startY);
+        if (dx < 6 && dy < 6) return;
+        axis = dx > dy ? "x" : "y";
+        if (axis === "x") { startY = null; return; }
+      }
       const d = e.touches[0].clientY - startY;
       if (d > 0 && window.scrollY <= 0) {
         pulling = true;
