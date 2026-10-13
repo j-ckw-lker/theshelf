@@ -18,12 +18,12 @@ const tagged = (t) => (f) => f.tags.includes(t);
 
 // ─── Tonight's filters ──────────────────────────────────────────────────
 // [key, label, [[optionKey, label, test], …]]. "any" is implied first.
-export const makeFilters = (customTags = []) => [
+export const makeFilters = (customTags = [], hiddenTags = []) => [
   ["mood", "Mood", [
     ["comfort", "Comfort", (f) => (f.rating ?? 0) >= 4.5 || f.tags.includes("comfort")],
     ["five", "5 stars", (f) => f.rating === 5],
-    ["rewatch", "Tagged rewatch", tagged("rewatch")],
-    ["gem", "Tagged gem", tagged("hidden")],
+    ...(hiddenTags.includes("rewatch") ? [] : [["rewatch", "Tagged rewatch", tagged("rewatch")]]),
+    ...(hiddenTags.includes("hidden") ? [] : [["gem", "Tagged gem", tagged("hidden")]]),
     ...customTags.map((t) => ["tag:" + t, t, tagged(t)]),
   ]],
   ["genre", "Genre", [

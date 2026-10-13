@@ -272,7 +272,7 @@ function useSync(D) {
   return { on: !!pass, status, connect, choose, disconnect, syncNow: () => (jsonRef.current !== meta.current.synced ? push() : pull()) };
 }
 
-function deriveFilm(raw, userData, watchLog) {
+function deriveFilm(raw, userData, watchLog, hiddenTags = []) {
   const key = fkey(raw);
   const u = userData[key] || {};
   const f = u.match ? { ...raw, ...u.match } : raw; // "Fix the match" swaps in another film's TMDB data
@@ -288,7 +288,10 @@ function deriveFilm(raw, userData, watchLog) {
   const out = {
     ...f,
     key,
-    tags: u.tags || [],
+    // Built-in tags you've removed are invisible everywhere (shelves, filters, Sell hiding), but stay
+    // stored so restoring the tag brings them back. Writes always go through rawTags.
+    tags: (u.tags || []).filter((t) => !hiddenTags.includes(t)),
+    rawTags: u.tags || [],
     note: u.note || "",
     customPoster: u.poster || null,
     backdrop: u.backdrop || f.backdrop || null,
@@ -871,7 +874,7 @@ const countryName = (code) => {
   if (code === "GB") return "UK";
   try { regionNames ||= new Intl.DisplayNames(["en"], { type: "region" }); return regionNames.of(code) || code; } catch { return code; }
 };
-const libGroups = (films, customTags) => {
+const libGroups = (films, customTags, hiddenTags = []) => {
   const has = (fn) => (f) => f.copies.some(fn);
   const formats = FORMATS.filter((x) => films.some(has((c) => c.format === x)));
   const pkgs = PACKAGES.filter((x) => x !== "Standard" && films.some(has((c) => c.package === x)));
@@ -890,7 +893,7 @@ const libGroups = (films, customTags) => {
     ]],
     ["package", "Packaging", pkgs.map((x) => [x, x, has((c) => c.package === x)])],
     ["label", "Distributor", labels.map((x) => [x, x, has((c) => c.label === x)])],
-    ["tag", "Tags", [...Object.entries(TAGS), ...customTags.map((t) => [t, t])].map(([k, l]) => [k, l, (f) => f.tags.includes(k)])],
+    ["tag", "Tags", [...Object.entries(TAGS).filter(([k]) => !hiddenTags.includes(k)), ...customTags.map((t) => [t, t])].map(([k, l]) => [k, l, (f) => f.tags.includes(k)])],
     ["decade", "Decade", decades.map((d) => [String(d), d + "s", (f) => f.yearNum >= d && f.yearNum < d + 10])],
     ["genre", "Genre", genres.map((g) => [g, GENRE_NAMES[g] || g, (f) => f.genres.includes(g)])],
     ["theme", "Theme", THEMES.map(([k, l]) => [k, l, (f) => f.themes.includes(k), films.filter((f) => f.themes.includes(k)).length]).filter((o) => o[3] > 0).sort((a, b) => b[3] - a[3]).map(([k, l, t]) => [k, l, t])],
@@ -940,7 +943,8 @@ function Library({ films: allFilms, customTags, extra, setExtra, onOpen, onAdd, 
   const wantsSell = (sel.tag || []).includes("sell");
   const films = useMemo(() => allFilms.filter((f) => (countDigital || wantsDigital || !f.digitalOnly) && (!hideSell || wantsSell || !f.tags.includes("sell"))),
     [allFilms, countDigital, wantsDigital, hideSell, wantsSell]);
-  const groups = useMemo(() => libGroups(allFilms, customTags), [allFilms, customTags]);
+  const [hiddenTagsPref] = usePref("shelf-hidden-tags", "");
+  const groups = useMemo(() => libGroups(allFilms, customTags, hiddenTagsPref.split(",").filter(Boolean)), [allFilms, customTags, hiddenTagsPref]);
   const active = useMemo(() => activeOpts(groups, sel), [groups, sel]);
   const nActive = active.reduce((n, g) => n + g[2].length, 0);
   const toggle = (g, k) => setSel((s) => {
@@ -1646,6 +1650,8 @@ function Prefs({ finish, setFinish }) {
   const [brk, setBrk] = usePref("shelf-break-min", 15);
   const [countDigital, setCountDigital] = usePref("shelf-count-digital", false);
   const [hideSell, setHideSell] = usePref("shelf-hide-sell", false);
+  const [hiddenTagsPref] = usePref("shelf-hidden-tags", "");
+  const sellRemoved = hiddenTagsPref.split(",").includes("sell");
   return (
     <div className="page prefs">
       <div className="page-head"><h1>Preferences</h1></div>
@@ -1676,7 +1682,7 @@ function Prefs({ finish, setFinish }) {
         <div className="section-label caps pref-sec">Collection</div>
         <div className="you-group">
           <Switch label="Count digital-only films" on={countDigital} onChange={setCountDigital} />
-          <Switch label="Hide films tagged Sell" on={hideSell} onChange={setHideSell} />
+          {!sellRemoved && <Switch label="Hide films tagged Sell" on={hideSell} onChange={setHideSell} />}
         </div>
         <p className="foot pref-foot">Off: films you only own digitally stay out of your shelf count, Home and Stats. Filter the Library by Digital only to see them.</p>
       </section>
@@ -1687,7 +1693,11 @@ function Prefs({ finish, setFinish }) {
 function TagsView({ films, D }) {
   const [renaming, setRenaming] = useState(null);
   const [newTag, setNewTag] = useState(null);
-  const count = (k) => films.filter((f) => f.tags.includes(k)).length;
+  const count = (k) => films.filter((f) => f.rawTags.includes(k)).length;
+  const [hiddenTagsPref, setHiddenTags] = usePref("shelf-hidden-tags", "");
+  const hidden = hiddenTagsPref.split(",").filter(Boolean);
+  const hideTag = (k) => setHiddenTags([...new Set([...hidden, k])].join(","));
+  const restoreTag = (k) => setHiddenTags(hidden.filter((x) => x !== k).join(","));
   const typed = D.labels.filter((l) => !KNOWN_LABELS.includes(l));
   const addTag = () => { const t = (newTag || "").trim().replace(/\s+/g, " "); if (t && !TAGS[t]) D.addTag(t); setNewTag(null); };
   return (
@@ -1696,8 +1706,28 @@ function TagsView({ films, D }) {
       <section>
         <div className="section-label caps pref-sec">Built-in tags</div>
         <div className="you-group">
-          {Object.entries(TAGS).map(([k, l]) => <div className="pref-cell" key={k}><span className="grow">{l}</span><span className="muted tnum">{count(k)}</span></div>)}
+          {Object.entries(TAGS).filter(([k]) => !hidden.includes(k)).map(([k, l]) => (
+            <div className="pref-cell" key={k}>
+              <span className="grow">{l} <span className="muted tnum">· {count(k)}</span></span>
+              <button style={{ fontSize: 15, color: "var(--danger)" }} onClick={() => hideTag(k)}>Remove</button>
+            </div>
+          ))}
+          {hidden.length === Object.keys(TAGS).length && <div className="pref-cell muted" style={{ fontSize: 15 }}>All built-in tags removed.</div>}
         </div>
+        <p className="foot pref-foot">Removing one hides it everywhere: on films, in filters and its Home shelf{hidden.includes("sell") ? "" : ", and for Sell, the Hide films tagged Sell switch"}. Films keep it quietly, so restoring brings everything back.</p>
+        {hidden.length > 0 && (
+          <>
+            <div className="section-label caps pref-sec" style={{ marginTop: 18 }}>Removed</div>
+            <div className="you-group">
+              {hidden.filter((k) => TAGS[k]).map((k) => (
+                <div className="pref-cell" key={k}>
+                  <span className="grow muted">{TAGS[k]} <span className="tnum">· {count(k)}</span></span>
+                  <button className="link" style={{ fontSize: 15 }} onClick={() => restoreTag(k)}>Restore</button>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </section>
       <section>
         <div className="dir-sub pref-sec"><span className="section-label caps">Your tags</span><button className="link" onClick={() => setNewTag("")}>New tag</button></div>
@@ -2013,7 +2043,7 @@ function FilmPage({ nav = "in", below = false, onPeek, wanted, film, films, ix, 
   useEffect(() => { setNote(film.note); setNewTag(null); setEditTags(false); setEditThemes(false); setDoomed(null); ref.current?.scrollTo(0, 0); }, [film.key]);
   const createTag = () => {
     const t = (newTag || "").trim().replace(/\s+/g, " ");
-    if (t) { onAddTag(t); if (!film.tags.includes(t)) onUpdate(film.key, { tags: [...film.tags, t] }); }
+    if (t) { onAddTag(t); if (!film.rawTags.includes(t)) onUpdate(film.key, { tags: [...film.rawTags, t] }); }
     setNewTag(null);
   };
   const [mountedBelow] = useState(below); // a page that appears underneath (going back two levels) shouldn't slide in
@@ -2033,7 +2063,7 @@ function FilmPage({ nav = "in", below = false, onPeek, wanted, film, films, ix, 
   const owned = useMemo(() => new Set(films.map((f) => f.tmdb)), [films]);
   const coll = film.collection && COLLECTIONS[film.collection];
   const collOwned = coll ? coll.parts.filter((p) => owned.has(p[0])).length : 0;
-  const toggleTag = (t) => onUpdate(film.key, { tags: film.tags.includes(t) ? film.tags.filter((x) => x !== t) : [...film.tags, t] });
+  const toggleTag = (t) => onUpdate(film.key, { tags: film.rawTags.includes(t) ? film.rawTags.filter((x) => x !== t) : [...film.rawTags, t] });
 
   return (
     <div className={stackClass(nav, below, mountedBelow)} ref={ref} role="dialog" aria-label={film.name} aria-hidden={below || undefined}>
@@ -3199,10 +3229,12 @@ export default function App() {
   // Preference: a fresh Home pick every time the app opens, instead of one pick per day.
   useEffect(() => { if (getPref("shelf-random-pick", false)) setHome((h) => ({ ...h, pick: h.pick + 1 + Math.floor(Math.random() * 7) })); }, []);
 
+  const [hiddenTagsPref] = usePref("shelf-hidden-tags", "");
+  const hiddenTags = useMemo(() => hiddenTagsPref.split(",").filter(Boolean), [hiddenTagsPref]);
   const films = useMemo(() => {
     const seedKeys = new Set(SEED_COLLECTION.map(fkey));
-    return [...SEED_COLLECTION, ...D.added.filter((f) => !seedKeys.has(fkey(f)))].map((f) => deriveFilm(f, D.userData, D.watchLog));
-  }, [D.added, D.userData, D.watchLog]);
+    return [...SEED_COLLECTION, ...D.added.filter((f) => !seedKeys.has(fkey(f)))].map((f) => deriveFilm(f, D.userData, D.watchLog, hiddenTags));
+  }, [D.added, D.userData, D.watchLog, hiddenTags]);
   useMemo(() => { [...films].sort((a, b) => b.recency - a.recency).forEach((f, i) => { f.recentRank = i + 1; }); }, [films]);
   const byKey = useMemo(() => new Map(films.map((f) => [f.key, f])), [films]);
   // "The shelf" for counts, Home and Stats: digital-only films join only if you say so in Preferences.
@@ -3229,8 +3261,8 @@ export default function App() {
   }, []);
   const [night, setNight] = useState(null);
   const [finish, setFinish] = useStored("shelf-finishby", 23);
-  const defs = useMemo(() => makeFilters(D.customTags), [D.customTags]);
-  const allTags = useMemo(() => [...Object.entries(TAGS), ...D.customTags.map((t) => [t, t])], [D.customTags]);
+  const defs = useMemo(() => makeFilters(D.customTags, hiddenTags), [D.customTags, hiddenTags]);
+  const allTags = useMemo(() => [...Object.entries(TAGS).filter(([k]) => !hiddenTags.includes(k)), ...D.customTags.map((t) => [t, t])], [D.customTags, hiddenTags]);
   // Label chips for copies: the ones you use most, then ones you've typed, then the usual boutique and studio labels.
   const labels = useMemo(() => {
     const used = new Map();
