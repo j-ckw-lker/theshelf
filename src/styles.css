@@ -527,7 +527,7 @@ html[data-vt="reflow"]::view-transition-old(root), html[data-vt="reflow"]::view-
 .want-fields { display: flex; flex-direction: column; gap: 12px; margin: 18px 0 16px; }
 .want-fields label > span { display: block; font-size: 13px; color: var(--label-2); margin-bottom: 6px; }
 .want-fields .chips { margin: 0; padding: 0; }
-.shelf-links { display: flex; gap: 16px; align-items: baseline; }
+.shelf-links { white-space: nowrap; flex-shrink: 0; display: flex; gap: 16px; align-items: baseline; }
 .dir-films .missing { position: relative; }
 .dir-films .missing.wanted .poster { opacity: 0.55; }
 .want-dot { position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; border-radius: 11px; display: grid; place-items: center; background: rgba(0, 0, 0, 0.6); color: var(--accent-text); }

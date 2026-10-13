@@ -227,15 +227,19 @@ export function dealShelves(recipes, seed, count = 6) {
     .sort((a, b) => b.k - a.k)
     .map((x) => x.r);
   const picked = [];
-  let people = 0;
+  let people = 0, colors = 0;
   for (const r of rest) {
     if (picked.length >= count) break;
     const cap = picked.length < 6 ? 2 : 3 + Math.floor((picked.length - 6) / 3);
     if (r.kind === "person") { if (people >= cap) continue; people++; }
+    if (r.kind === "color") { if (colors >= 1) continue; colors++; } // a color shelf is a treat: one per deal
     picked.push(r);
   }
   return picked.slice(0, count).map((r) => {
-    if (r.kind !== "pairs") return { ...r, deal: shuffled(r.films, rand).slice(0, 15) };
+    if (r.kind !== "pairs") {
+      const deal = shuffled(r.films, rand).slice(0, 15);
+      return { ...r, deal: r.order ? deal.sort(r.order) : deal }; // color shelves lay out as a gradient
+    }
     const used = new Set();
     const deal = shuffled(r.films, rand).filter((p) => {
       if (used.has(p.a.key) || used.has(p.b.key)) return false;

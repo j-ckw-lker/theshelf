@@ -1013,7 +1013,13 @@ function readColor(im) {
   const hue = (Math.atan2(near.reduce((a, i) => a + sn[i], 0), near.reduce((a, i) => a + cs[i], 0)) * 180) / Math.PI;
   return [Math.round((hue + 360) % 360), Math.round((vivid / n) * 100), Math.round((light / n) * 100)];
 }
-async function posterColor(path) {
+// Home and the Library can both be reading at once; share one read per poster.
+const colorReads = new Map();
+const posterColor = (path) => {
+  if (!colorReads.has(path)) colorReads.set(path, readPosterColor(path).finally(() => colorReads.delete(path)));
+  return colorReads.get(path);
+};
+async function readPosterColor(path) {
   if (!path) return null;
   const direct = img(path, "w92"), proxied = "/api/img?p=" + encodeURIComponent(path);
   const attempt = async (src) => readColor(await loadImg(src));
@@ -1060,6 +1066,26 @@ const colorRank = (f) => {
   const rot = (c[0] - HUE_START + 360) % 360, band = Math.floor(rot / BAND);
   return band * 200 + (band % 2 ? 100 - c[2] : c[2]) + (rot % BAND) / 100;
 };
+// Color shelves for Home: one family of the wheel each, only posters that are clearly that color
+// (or clearly white / black), laid out as a dark-to-light gradient. Built only once every poster has been read.
+const COLOR_SHELVES = [
+  ["red", "Red on red", 345, 15], ["orange", "Burnt orange", 15, 40], ["yellow", "Gold and yellow", 40, 68],
+  ["green", "Green", 68, 165], ["teal", "Teal", 165, 200], ["blue", "Blue period", 200, 255],
+  ["purple", "Purple haze", 255, 300], ["pink", "Hot pink", 300, 345],
+];
+function buildColorShelves(films) {
+  const col = (f) => posterColors[f.posterPath];
+  const vivid = (f) => { const c = col(f); return c && c[1] >= 9 ? c : null; };
+  const inArc = (h, a, b) => (a < b ? h >= a && h < b : h >= a || h < b);
+  const light = (a, b) => col(a)[2] - col(b)[2];
+  const shelves = COLOR_SHELVES.map(([id, title, a, b]) => ({ id: "color:" + id, title, test: (f) => { const c = vivid(f); return !!c && inArc(c[0], a, b); } }));
+  shelves.push({ id: "color:white", title: "White space", test: (f) => { const c = col(f); return !!c && c[1] < NEUTRAL && c[2] >= 62; } });
+  shelves.push({ id: "color:black", title: "Black on black", test: (f) => { const c = col(f); return !!c && c[1] < NEUTRAL && c[2] <= 20; } });
+  return shelves.map((r) => {
+    const list = films.filter((f) => !f.tags.includes("sell") && r.test(f));
+    return { ...r, kind: "color", weight: 0.7, sub: (f) => f.year, order: light, listSort: "color", films: list };
+  }).filter((r) => r.films.length >= 8);
+}
 const byColor = (dir) => (a, b) => {
   const x = colorRank(a), y = colorRank(b);
   const xs = x >= 10000, ys = y >= 10000;
@@ -1539,7 +1565,7 @@ function ListPage({ nav = "in", below = false, entry, films, backLabel, onBack, 
   const [mountedBelow] = useState(below);
   useSwipeBack(ref, onBack);
   const person = entry.kind === "person" ? entry.label : null;
-  const [sort, setSort] = useState(person ? "oldest" : "az");
+  const [sort, setSort] = useState(entry.sort || (person ? "oldest" : "az"));
   const colorProgress = usePosterColors(films, isColorSort(sort));
   const list = useMemo(() => films.filter(entry.test).sort(SORTS[sort][1]), [films, entry, sort, colorProgress]);
   const roles = person ? ROLES.map(([k, l]) => [l, list.filter((f) => f[k].includes(person)).length]).filter(([, n]) => n) : [];
@@ -3789,7 +3815,10 @@ export default function App() {
   const shelfFilms = useMemo(() => films.filter((f) => (countDigital || !f.digitalOnly) && (!hideSell || !f.tags.includes("sell"))), [films, countDigital, hideSell]);
   const ix = useMemo(() => pairIndex(films), [films]);
   const homePairs = useMemo(() => bestPairs(ix, 60), [ix]);
-  const recipes = useMemo(() => buildRecipes(shelfFilms, D.customTags, homePairs), [shelfFilms, D.customTags, homePairs]);
+  // Color shelves join Home once every poster's color is known (read in the background, once per poster).
+  const colorProgress = usePosterColors(shelfFilms, true);
+  const colorShelves = useMemo(() => (colorProgress ? [] : buildColorShelves(shelfFilms)), [shelfFilms, colorProgress]);
+  const recipes = useMemo(() => [...buildRecipes(shelfFilms, D.customTags, homePairs), ...colorShelves], [shelfFilms, D.customTags, homePairs, colorShelves]);
   const [wantOpen, setWantOpen] = useState(null); // a want's id, for its sheet
   const [peek, setPeek] = useState(null); // a greyed-out filmography film
   const wanted = useMemo(() => new Set(D.want.filter((w) => !w.bought).map((w) => wantId(w).toLowerCase())), [D.want]);
@@ -3958,7 +3987,7 @@ export default function App() {
     if (program) D.saveProgram({ ...program, watched: todayISO() });
   };
   const openFilmE = useEvent(openFilm);
-  const onSeeAllE = useEvent((s) => pushList({ kind: "shelf", label: s.title, test: s.test }));
+  const onSeeAllE = useEvent((s) => pushList({ kind: "shelf", label: s.title, test: s.test, sort: s.listSort }));
   const onSearchE = useEvent(() => { toLibrary(null); setSearchFocus((n) => n + 1); });
   const onFiltersE = useEvent((x) => (x === "reset" ? setFilters({}) : setShowFilters(true)));
   const onDoublesE = useEvent((view = "feed") => pushList({ kind: "doubles", label: "Double features", view }));
