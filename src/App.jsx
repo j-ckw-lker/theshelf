@@ -84,10 +84,31 @@ function useData() {
   const [labels, setLabels] = useStored("shelf-labels", []); // labels you've typed, offered as chips from then on
   // On deck: a short running pool of films you might watch this week. { key, added, tonight? }
   const [deck, setDeck] = useStored("shelf-deck", []);
+  // Reviews: posted ones (imported from Letterboxd, or drafts you've marked posted) and drafts written here.
+  // { id, key, date, text, status: "draft" | "posted", rating?, rewatch?, tags?, spoiler?, updated? }
+  const [reviews, setReviews] = useStored("shelf-reviews", []);
   const retag = (fn) => setUserData((d) => Object.fromEntries(Object.entries(d).map(([k, u]) => [k, u.tags ? { ...u, tags: fn(u.tags) } : u])));
   return {
-    userData, added, want, watchLog, customTags, programs, labels, deck,
+    userData, added, want, watchLog, customTags, programs, labels, deck, reviews,
     setDeck,
+    saveReview: (r) => setReviews((rs) => {
+      const next = { ...r, updated: new Date().toISOString() };
+      return rs.some((x) => x.id === r.id) ? rs.map((x) => (x.id === r.id ? next : x)) : [next, ...rs];
+    }),
+    removeReview: (id) => setReviews((rs) => rs.filter((x) => x.id !== id)),
+    // Letterboxd reviews: add the ones not here yet. A draft you marked posted for the same film and day
+    // gives way to the real one from Letterboxd.
+    importReviews: (list) => {
+      let added = 0;
+      setReviews((rs) => {
+        const have = new Set(rs.map((x) => x.id));
+        const fresh = list.filter((x) => !have.has(x.id));
+        added = fresh.length;
+        const stand = new Set(fresh.map((x) => x.key + "|" + x.date));
+        return [...rs.filter((x) => !(x.status === "posted" && !x.id.startsWith("lb:") && stand.has(x.key + "|" + x.date))), ...fresh];
+      });
+      return added;
+    },
     toggleDeck: (k) => setDeck((d) => (d.some((x) => x.key === k) ? d.filter((x) => x.key !== k) : [...d, { key: k, added: todayISO() }])),
     removeDeck: (k) => setDeck((d) => d.filter((x) => x.key !== k)),
     keepDeck: (k) => setDeck((d) => d.map((x) => (x.key === k ? { ...x, added: todayISO() } : x))),
@@ -155,8 +176,9 @@ function useData() {
       if (p.programs) setPrograms(p.programs);
       if (p.labels) setLabels(p.labels);
       if (p.deck) setDeck(p.deck);
+      if (p.reviews) setReviews(p.reviews);
     },
-    exportPayload: () => ({ userData, added, want, watchLog, customTags, programs, labels, deck }),
+    exportPayload: () => ({ userData, added, want, watchLog, customTags, programs, labels, deck, reviews }),
   };
 }
 
@@ -164,7 +186,7 @@ function useData() {
 // Keeps a copy of everything personal on the server (api/sync.js), locked with a passphrase:
 // saves a moment after each change, checks for newer copies when the app opens or comes back,
 // and merges when two devices both changed things. A new install just enters the passphrase.
-const SYNC_FIELDS = ["userData", "added", "want", "watchLog", "customTags", "programs", "labels", "deck"];
+const SYNC_FIELDS = ["userData", "added", "want", "watchLog", "customTags", "programs", "labels", "deck", "reviews"];
 const hasPersonal = (d) => !!(Object.keys(d.userData || {}).length || (d.added || []).length || Object.keys(d.watchLog || {}).length
   || (d.customTags || []).length || (d.programs || []).length || (d.labels || []).length);
 const unionBy = (a = [], b = [], key) => { const m = new Map(); a.forEach((x) => m.set(key(x), x)); b.forEach((x) => m.set(key(x), x)); return [...m.values()]; };
@@ -184,6 +206,12 @@ function mergeDocs(server = {}, local = {}) {
     want: unionBy(server.want, local.want, (w) => w.film + "|" + w.year),
     labels: [...new Set([...(server.labels || []), ...(local.labels || [])])],
     deck: unionBy(server.deck, local.deck, (d) => d.key),
+    // Same review on both: keep whichever was edited last.
+    reviews: [...[...(server.reviews || []), ...(local.reviews || [])].reduce((m, r) => {
+      const o = m.get(r.id);
+      if (!o || (r.updated || "") >= (o.updated || "")) m.set(r.id, r);
+      return m;
+    }, new Map()).values()],
   };
 }
 
@@ -3834,6 +3862,162 @@ function useLongPress(onPress) {
       document.removeEventListener("contextmenu", onCtx);
     };
   }, []);
+}
+
+// ─── REVIEWS ────────────────────────────────────────────────────────────
+// Letterboxd stores reviews with a little HTML (<i>, <b>, <blockquote>, links) and entities. Render just
+// those as real formatting; everything else is plain text. Never injects HTML.
+const ENT = { amp: "&", lt: "<", gt: ">", quot: '"', "#39": "'", apos: "'", nbsp: " " };
+const unent = (t) => t.replace(/&(#\d+|#x[0-9a-f]+|\w+);/gi, (m, e) => ENT[e.toLowerCase()] ?? (e[0] === "#" ? String.fromCodePoint(e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : +e.slice(1)) : m));
+function ReviewText({ text, className = "review-text" }) {
+  const out = [];
+  let stack = [{ tag: null, kids: out }];
+  const re = /<\s*(\/?)\s*(i|em|b|strong|blockquote|a|br|p)\b[^>]*>/gi;
+  let last = 0, m, n = 0;
+  const push = (node) => stack[stack.length - 1].kids.push(node);
+  const textNode = (t) => t && push(unent(t));
+  while ((m = re.exec(text))) {
+    textNode(text.slice(last, m.index));
+    last = re.lastIndex;
+    const tag = m[2].toLowerCase(), close = !!m[1];
+    if (tag === "br") { push("\n"); continue; }
+    if (tag === "p") { if (close) push("\n\n"); continue; }
+    if (!close) { stack.push({ tag, kids: [] }); continue; }
+    const i = stack.map((x) => x.tag).lastIndexOf(tag);
+    if (i < 1) continue;
+    while (stack.length > i) {
+      const top = stack.pop();
+      const T = { i: "em", em: "em", b: "strong", strong: "strong", blockquote: "blockquote", a: "span" }[top.tag];
+      stack[stack.length - 1].kids.push(<T key={n++}>{top.kids}</T>);
+    }
+  }
+  textNode(text.slice(last).replace(/<[^>]*>/g, ""));
+  while (stack.length > 1) { const top = stack.pop(); stack[stack.length - 1].kids.push(...top.kids); }
+  return <div className={className}>{out}</div>;
+}
+const lbFilmUrl = (film) => (film.tmdb ? `https://letterboxd.com/tmdb/${film.tmdb}/` : `https://letterboxd.com/search/${encodeURIComponent(film.name)}/`);
+const lbReviewUrl = (r) => (r.id.startsWith("lb:") ? "https://boxd.it/" + r.id.slice(3) : null);
+
+// On a film page: your reviews of it, drafts first.
+function FilmReviews({ film, reviews, onWrite, onOpenReview }) {
+  const [all, setAll] = useState(false);
+  const list = reviews.slice().sort((a, b) => (a.status === b.status ? b.date.localeCompare(a.date) : a.status === "draft" ? -1 : 1));
+  const shown = all ? list : list.slice(0, 2);
+  return (
+    <section className="film-reviews">
+      <div className="stat-head" style={{ marginBottom: 8 }}>
+        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>Your reviews</h2>
+        <button className="link" onClick={onWrite}>Write a review</button>
+      </div>
+      {list.length === 0 && <p className="muted" style={{ margin: 0, fontSize: 14 }}>Nothing written about {film.name} yet.</p>}
+      {shown.map((r) => (
+        <button key={r.id} className="review-card" onClick={() => onOpenReview(r)}>
+          <span className="review-meta tnum">
+            {r.status === "draft" ? <span className="badge accent-badge">Draft</span> : <span>{fmtDate(r.date)}</span>}
+            {r.status === "draft" && <span>{fmtDate(r.date)}</span>}
+            {r.rating != null && <span className="accent">{stars(r.rating)}</span>}
+            {r.rewatch && <span>Rewatch</span>}
+            {r.spoiler && <span>Spoilers</span>}
+          </span>
+          {r.text ? <ReviewText text={r.text} className="review-text clamp" /> : <span className="muted">Empty draft</span>}
+        </button>
+      ))}
+      {list.length > 2 && <button className="link" style={{ fontSize: 14 }} onClick={() => setAll(!all)}>{all ? "Fewer" : `All ${list.length} reviews`}</button>}
+    </section>
+  );
+}
+
+// Writing (or reading) one review. Drafts save as you type; when it's ready, copy it and paste it into
+// Letterboxd (which has no way for apps to post), then mark it posted.
+function ReviewSheet({ film, review, onSave, onDelete, onClose }) {
+  const isPosted = review.status === "posted";
+  const [r, setR] = useState(review);
+  const [copied, setCopied] = useState(false);
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) { first.current = false; return; }
+    if (isPosted) return;
+    const t = setTimeout(() => onSave(r), 500);
+    return () => clearTimeout(t);
+  }, [r]);
+  const dates = [...new Set([todayISO(), ...film.diary.map((e) => e.date).reverse(), review.date])].filter(Boolean).slice(0, 6);
+  const plain = (t) => unent(t.replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]*>/g, ""));
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(plain(r.text)); setCopied(true); } catch { setCopied(false); }
+    onSave(r);
+    window.open(lbFilmUrl(film), "_blank", "noopener");
+  };
+  const close = () => { if (!isPosted && !r.text.trim()) onDelete(r.id); else if (!isPosted) onSave(r); onClose(); };
+  return (
+    <Sheet title={isPosted ? "Your review" : "Draft review"} tall onClose={close}
+      left={<button className="left" onClick={close}>Done</button>} right={<span />}
+      foot={isPosted ? (
+        lbReviewUrl(r) && <a className="btn btn-outline" href={lbReviewUrl(r)} target="_blank" rel="noopener">Open on Letterboxd</a>
+      ) : (
+        <div className="btn-row">
+          <button className="btn btn-primary" onClick={copy} disabled={!r.text.trim()}>{copied ? "Copied · open again" : "Copy & open Letterboxd"}</button>
+          <button className="btn btn-outline" onClick={() => { onSave({ ...r, status: "posted" }); onClose(); }} disabled={!r.text.trim()}>Mark posted</button>
+        </div>
+      )}>
+      <div className="muted" style={{ fontSize: 14, marginTop: -4 }}>{film.name} ({film.year}){r.rating != null ? " · " : ""}{r.rating != null && <span className="accent">{stars(r.rating)}</span>}</div>
+      {isPosted ? (
+        <>
+          <span className="muted tnum" style={{ fontSize: 13 }}>{fmtDate(r.date)}{r.rewatch ? " · Rewatch" : ""}{r.tags ? " · " + r.tags : ""}</span>
+          <ReviewText text={r.text} />
+        </>
+      ) : (
+        <>
+          <div className="tag-row">
+            {dates.map((d) => <button key={d} className={"chip" + (r.date === d ? " on" : "")} onClick={() => setR({ ...r, date: d })}>{d === todayISO() ? "Today" : fmtDate(d)}</button>)}
+          </div>
+          <textarea className="review-input" value={r.text} autoFocus={!r.text} placeholder={`What did ${film.name} do to you?`}
+            onChange={(e) => setR({ ...r, text: e.target.value })} aria-label="Review" />
+          <Switch label="Contains spoilers" on={!!r.spoiler} onChange={(v) => setR({ ...r, spoiler: v })} />
+          <span className="muted" style={{ fontSize: 12, lineHeight: 1.45 }}>
+            Saved as you type, and synced. Letterboxd doesn't let apps post for you, so Copy puts the text on your clipboard and opens the film there; paste it in, then come back and mark it posted.
+          </span>
+          {r.text.trim() && <button className="danger" onClick={() => { onDelete(r.id); onClose(); }}>Delete draft</button>}
+        </>
+      )}
+    </Sheet>
+  );
+}
+
+// You → Reviews: drafts waiting to be finished, and everything posted.
+function ReviewsPage({ reviews, byKey, onOpenReview, onOpenFilm }) {
+  const drafts = reviews.filter((r) => r.status === "draft");
+  const [seg, setSeg] = useState(drafts.length ? "draft" : "posted");
+  const [n, setN] = useState(40);
+  const list = reviews.filter((r) => r.status === seg && byKey.get(r.key)).sort((a, b) => b.date.localeCompare(a.date));
+  return (
+    <div className="page reviews-page">
+      <div className="page-head"><h1>Reviews</h1></div>
+      <div className="seg" role="tablist" aria-label="Show">
+        {[["draft", "Drafts"], ["posted", "Posted"]].map(([k, l]) => (
+          <button key={k} role="tab" aria-selected={seg === k} className={seg === k ? "on" : ""} onClick={() => { setSeg(k); setN(40); }}>
+            {l} <span className="tnum seg-n">{reviews.filter((r) => r.status === k && byKey.get(r.key)).length}</span>
+          </button>
+        ))}
+      </div>
+      {list.length === 0 && <div className="empty">{seg === "draft" ? "No drafts. Log a watch and add a few words, or tap Write a review on any film." : "Nothing posted yet."}</div>}
+      <div className="review-list">
+        {list.slice(0, n).map((r) => {
+          const f = byKey.get(r.key);
+          return (
+            <div key={r.id} className="review-row">
+              <button className="review-thumb" onClick={() => onOpenFilm(f)} data-key={f.key} aria-label={"Open " + f.name}><Poster path={f.posterPath} title={f.name} size="w92" className="thumb" /></button>
+              <button className="review-body" onClick={() => onOpenReview(r)}>
+                <span className="title">{f.name} <span className="muted tnum">{f.year}</span></span>
+                <span className="review-meta tnum"><span>{fmtDate(r.date)}</span>{r.rating != null && <span className="accent">{stars(r.rating)}</span>}{r.rewatch && <span>Rewatch</span>}</span>
+                {r.text ? <ReviewText text={r.text} className="review-text clamp" /> : <span className="muted">Empty draft</span>}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      {list.length > n && <button className="btn btn-outline" onClick={() => setN(n + 60)}>Show more</button>}
+    </div>
+  );
 }
 
 const HomeTab = memo(Home), LibraryTab = memo(Library), YouTab = memo(You);
