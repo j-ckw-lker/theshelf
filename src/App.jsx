@@ -1813,7 +1813,8 @@ const SegRow = ({ label, value, options, onChange }) => (
     </div>
   </div>
 );
-function Prefs({ finish, setFinish }) {
+function Prefs({ finish, setFinish, removed = [], onRestore }) {
+  const [showRemoved, setShowRemoved] = useState(false);
   const [view, setView] = usePref("shelf-libview", "wall");
   const [sort, setSort] = usePref("shelf-sort", "az");
   const [cols, setCols] = usePref("shelf-wallcols", 4);
@@ -1866,6 +1867,24 @@ function Prefs({ finish, setFinish }) {
         </div>
         <p className="foot pref-foot">Off: films you only own digitally stay out of your shelf count, Home and Stats. Filter the Library by Digital only to see them.</p>
       </section>
+      {removed.length > 0 && (
+        <section>
+          <div className="section-label caps pref-sec">Removed from collection</div>
+          <div className="you-group">
+            <button className="pref-cell" onClick={() => setShowRemoved(!showRemoved)} aria-expanded={showRemoved}>
+              <span className="grow">{removed.length} {removed.length === 1 ? "film" : "films"}</span>
+              <span className="pref-val">{showRemoved ? "Hide" : "Show"}<Icon d={I.down} size={12} sw={2.6} /></span>
+            </button>
+            {showRemoved && removed.map((r) => (
+              <div className="pref-cell" key={r.key}>
+                <span className="grow">{r.name} <span className="muted tnum">{r.year}</span></span>
+                <button className="link" onClick={() => onRestore(r.key)}>Restore</button>
+              </div>
+            ))}
+          </div>
+          <p className="foot pref-foot">Restoring brings a film back with its copies, tags and notes. Watch history was never touched.</p>
+        </section>
+      )}
     </div>
   );
 }
@@ -2221,6 +2240,8 @@ function FilmPage({ nav = "in", below = false, onPeek, wanted, deckItem, deckDay
     else onUpdate(film.key, { themesAdd: [...u.add, id] });
   };
   const [doomed, setDoomed] = useState(null);
+  const [armRemove, setArmRemove] = useState(false); // removing takes two taps
+  useEffect(() => { if (!armRemove) return; const t = setTimeout(() => setArmRemove(false), 4000); return () => clearTimeout(t); }, [armRemove]);
   const ref = useRef(null);
   useEffect(() => { setNote(film.note); setNewTag(null); setEditTags(false); setEditThemes(false); setDoomed(null); ref.current?.scrollTo(0, 0); }, [film.key]);
   const createTag = () => {
@@ -2405,7 +2426,9 @@ function FilmPage({ nav = "in", below = false, onPeek, wanted, deckItem, deckDay
 
           <div style={{ display: "flex", gap: 22, flexWrap: "wrap", alignItems: "center" }}>
             <button className="link" onClick={onEditDetails}>Edit details</button>
-            {film.userAdded && <button className="danger" onClick={() => { onRemove(film.key); onBack(); }}>Remove from collection</button>}
+            <button className="danger" onClick={() => (armRemove ? (onRemove(film), onBack()) : setArmRemove(true))}>
+              {armRemove ? "Tap again to remove it" : "Remove from collection"}
+            </button>
           </div>
         </div>
       </div>
@@ -3803,8 +3826,19 @@ export default function App() {
   const hiddenTags = useMemo(() => hiddenTagsPref.split(",").filter(Boolean), [hiddenTagsPref]);
   const films = useMemo(() => {
     const seedKeys = new Set(SEED_COLLECTION.map(fkey));
-    return [...SEED_COLLECTION, ...D.added.filter((f) => !seedKeys.has(fkey(f)))].map((f) => deriveFilm(f, D.userData, D.watchLog, hiddenTags));
+    // A removed film (any film: imported or added here) is flagged in its own data, which syncs and can be undone;
+    // its watch history stays in the diary.
+    return [...SEED_COLLECTION, ...D.added.filter((f) => !seedKeys.has(fkey(f)))]
+      .filter((f) => !D.userData[fkey(f)]?.removed)
+      .map((f) => deriveFilm(f, D.userData, D.watchLog, hiddenTags));
   }, [D.added, D.userData, D.watchLog, hiddenTags]);
+  const removedFilms = useMemo(() => {
+    const seedKeys = new Set(SEED_COLLECTION.map(fkey));
+    return [...SEED_COLLECTION, ...D.added.filter((f) => !seedKeys.has(fkey(f)))]
+      .filter((f) => D.userData[fkey(f)]?.removed)
+      .map((f) => ({ key: fkey(f), name: f.name, year: f.year, on: D.userData[fkey(f)].removed }))
+      .sort((a, b) => b.on.localeCompare(a.on) || a.name.localeCompare(b.name));
+  }, [D.added, D.userData]);
   useMemo(() => { [...films].sort((a, b) => b.recency - a.recency).forEach((f, i) => { f.recentRank = i + 1; }); }, [films]);
   const byKey = useMemo(() => new Map(films.map((f) => [f.key, f])), [films]);
   // "The shelf" for counts, Home and Stats: digital-only films join only if you say so in Preferences.
@@ -3882,6 +3916,11 @@ export default function App() {
     if (!pool.length) return;
     D.pinTonight(pool[Math.floor(Math.random() * pool.length)].key);
   };
+  const removeFilm = (f) => {
+    D.updateFilm(f.key, { removed: todayISO() });
+    showToast({ text: f.name + " removed from your collection", action: "Undo", run: () => D.updateFilm(f.key, { removed: undefined }) });
+  };
+  const restoreFilm = (key) => D.updateFilm(key, { removed: undefined });
   const logFilm = (key, date, rating) => { D.logWatch(key, date, rating); if (rating !== undefined) D.updateFilm(key, { rating }); };
   useLongPress((key) => { if (byKey.has(key)) setPress(key); });
 
@@ -4030,7 +4069,7 @@ export default function App() {
         if (typeof e !== "string" && e.kind === "wishlist") return page(<Wishlist want={D.want} films={films} onOpenWant={onOpenWantE} onNew={onNewWantE} />);
         if (typeof e !== "string" && e.kind === "diary") return page(<Diary films={films} watchLog={D.watchLog} onOpen={openFilm} />);
         if (typeof e !== "string" && e.kind === "stats") return page(<Stats films={shelfFilms} onPerson={onPerson} onLabel={onLabelE} />);
-        if (typeof e !== "string" && e.kind === "prefs") return page(<Prefs finish={finish} setFinish={setFinish} />);
+        if (typeof e !== "string" && e.kind === "prefs") return page(<Prefs finish={finish} setFinish={setFinish} removed={removedFilms} onRestore={restoreFilm} />);
         if (typeof e !== "string" && e.kind === "tags") return page(<TagsView films={films} D={D} />);
         if (typeof e !== "string" && e.kind === "backup") return page(<div className="page"><div className="page-head"><h1>Backup &amp; sync</h1></div><Backup bare D={D} sync={sync} films={films} /></div>);
         if (typeof e !== "string" && e.kind === "doubles") {
@@ -4045,7 +4084,7 @@ export default function App() {
           <FilmPage key={depth + ":" + e} nav={nav} below={below} onPeek={setPeek} wanted={wanted}
             deckItem={deck.find((x) => x.key === f.key)} deckDays={deckDays} onDeckToggle={(film) => toggleDeck(film)} film={f} films={films} ix={ix} onNight={setNight} onBuildAround={buildAround} allTags={allTags} onAddTag={D.addTag} onRemoveTag={D.removeTag}
             onEditCopy={(c) => setCopyEdit({ key: f.key, copy: c })} onEditDetails={() => setDetailsFor(f.key)} backLabel={label} onBack={back} onOpen={openFilm} onPerson={onPerson}
-            onUpdate={D.updateFilm} onLog={logFilm} onUnlog={D.unlogWatch} onRemove={D.removeFilm} onPicker={(t) => setPicking({ key: f.key, tab: t })} />
+            onUpdate={D.updateFilm} onLog={logFilm} onUnlog={D.unlogWatch} onRemove={removeFilm} onPicker={(t) => setPicking({ key: f.key, tab: t })} />
         );
       })}
 
@@ -4106,8 +4145,12 @@ export default function App() {
             onLog={() => setLogFor(f.key)} onDouble={() => buildAround(f)} onOpen={() => openFilm(f)} />
         );
       })()}
-      <Toast toast={toast} onAction={() => { const t = toast; setToast(null); if (t?.go === "deck" && !(top && top.kind === "deck")) pushList({ kind: "deck", label: "On deck" }); }} />
-      {adding && <AddSheet prefill={adding} existing={films} onAdd={(f) => { D.addFilm({ ...f, addedAt: todayISO() }); setAdding(null); }} onClose={() => setAdding(null)} />}
+      <Toast toast={toast} onAction={() => { const t = toast; setToast(null); t?.run?.(); if (t?.go === "deck" && !(top && top.kind === "deck")) pushList({ kind: "deck", label: "On deck" }); }} />
+      {adding && <AddSheet prefill={adding} existing={films} onAdd={(f) => {
+        if (D.userData[fkey(f)]?.removed) restoreFilm(fkey(f)); // it was removed earlier: bring it back with its notes and copies
+        if (!SEED_COLLECTION.some((x) => fkey(x) === fkey(f)) && !D.added.some((x) => fkey(x) === fkey(f))) D.addFilm({ ...f, addedAt: todayISO() });
+        setAdding(null);
+      }} onClose={() => setAdding(null)} />}
     </div>
   );
 }
