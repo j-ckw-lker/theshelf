@@ -1124,6 +1124,9 @@ const SORTS = {
   rating: ["Top rated", (a, b) => (b.rating ?? -1) - (a.rating ?? -1) || a.sortKey.localeCompare(b.sortKey)],
   recent: ["Recently added", (a, b) => b.recency - a.recency],
   long: ["Longest runtime", (a, b) => (b.runtime || 0) - (a.runtime || 0)],
+  // Watch order: most recent first (never-watched last), or the reverse for what's gone longest without a watch.
+  watched: ["Recently watched", (a, b) => (b.lastWatched || "").localeCompare(a.lastWatched || "") || a.sortKey.localeCompare(b.sortKey), "Recent watches"],
+  overdue: ["Longest since watched", (a, b) => (a.lastWatched ? 1 : 0) - (b.lastWatched ? 1 : 0) || (a.lastWatched || "").localeCompare(b.lastWatched || "") || a.sortKey.localeCompare(b.sortKey), "Longest since"],
   color: ["Color: warm to cool", byColor(1), "Warm to cool"],
   colorcool: ["Color: cool to warm", byColor(-1), "Cool to warm"],
 };
