@@ -375,6 +375,7 @@ const I = {
   you: <><circle cx="12" cy="8.5" r="4" /><path d="M4.5 20.5c1.2-3.8 4-5.8 7.5-5.8s6.3 2 7.5 5.8" /></>,
   calendar: <><rect x="4" y="5" width="16" height="15" rx="2" /><path d="M4 10h16M9 3v4M15 3v4" /></>,
   tag: <><path d="M3.5 12.2V4.5a1 1 0 0 1 1-1h7.7l8.3 8.3a1 1 0 0 1 0 1.4l-7.1 7.1a1 1 0 0 1-1.4 0Z" /><circle cx="8" cy="8" r="1.4" /></>,
+  eye: <><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" /><circle cx="12" cy="12" r="3" /></>,
   moon: <path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z" />,
   cloud: <path d="M7 18a4.5 4.5 0 0 1-.6-9A6 6 0 0 1 18 8.5a4 4 0 0 1-.5 9.5Z" />,
   list: <><path d="M9 6h11M9 12h11M9 18h11" /><circle cx="4.5" cy="6" r="1" fill="currentColor" /><circle cx="4.5" cy="12" r="1" fill="currentColor" /><circle cx="4.5" cy="18" r="1" fill="currentColor" /></>,
@@ -1092,6 +1093,30 @@ const byColor = (dir) => (a, b) => {
   return (xs ? x - y : dir * (x - y)) || a.sortKey.localeCompare(b.sortKey);
 };
 
+// Fade watched: posters dim by how recently you've watched them, so what's due a watch stands out.
+// "recent" (the default) is a gradient: last month nearly gone, two years+ or never at full strength.
+// "ever" and "year" are the blunt Letterboxd-style versions. The eye button in the Library flips it on/off.
+const FADE_MODES = [["off", "Off"], ["recent", "By how recently"], ["ever", "Watched ever"], ["year", "Watched this year"]];
+const FADE_DUE = { recent: "due", ever: "unseen", year: "to go" };
+function useFade() {
+  const [fade, setFade] = usePref("shelf-fade", "off");
+  const [lastMode, setLastMode] = usePref("shelf-fade-mode", "recent");
+  const yr = String(thisYear());
+  // Returns how visible a poster should be (null = full strength, not faded).
+  const level = fade === "ever" ? (f) => (f.lastWatched ? 0.26 : null)
+    : fade === "year" ? (f) => (f.views.some((v) => v.startsWith(yr)) || (f.lastWatched || "").startsWith(yr) ? 0.26 : null)
+    : fade === "recent" ? (f) => {
+      if (!f.lastWatched) return null;
+      const d = dayDiff(f.lastWatched);
+      return d <= 30 ? 0.18 : d <= 90 ? 0.3 : d <= 180 ? 0.45 : d <= 365 ? 0.65 : d <= 730 ? 0.85 : null;
+    }
+    : null;
+  const toggle = () => (fade === "off" ? setFade(lastMode) : setFade("off"));
+  const choose = (m) => { setFade(m); if (m !== "off") setLastMode(m); };
+  return { fade, seen: level, due: FADE_DUE[fade], toggle, choose };
+}
+const fadeProps = (seen, f) => { const v = seen && seen(f); return v == null || v === false ? {} : { className: "seen", style: { "--fade": v } }; };
+
 const SORTS = {
   az: ["Title A–Z", (a, b) => a.sortKey.localeCompare(b.sortKey)],
   newest: ["Newest", (a, b) => b.yearNum - a.yearNum || a.sortKey.localeCompare(b.sortKey)],
@@ -1158,6 +1183,7 @@ function Library({ films: allFilms, customTags, extra, setExtra, onOpen, onAdd, 
   useEffect(() => { if (reset) { setQ(""); setSel({}); setFiltering(false); inputRef.current?.blur(); } }, [reset]);
 
   const colorProgress = usePosterColors(films, isColorSort(sort) && !byRecent);
+  const { seen, due, toggle: toggleFade } = useFade();
   const query = q.trim().toLowerCase();
   const list = useMemo(() => {
     const test = selTest(active);
@@ -1186,6 +1212,10 @@ function Library({ films: allFilms, customTags, extra, setExtra, onOpen, onAdd, 
         <div className="page-head">
           <h1>Library</h1>
           <div style={{ display: "flex", gap: 4 }}>
+            <button className={"icon-btn fade-btn" + (seen ? " on" : "")} onClick={toggleFade} aria-pressed={!!seen}
+              aria-label={seen ? "Stop fading watched films" : "Fade watched films"}>
+              <Icon d={I.eye} size={22} sw={1.9} />
+            </button>
             <button className="icon-btn" onClick={() => changeView(view === "wall" ? "list" : "wall")} aria-label={view === "wall" ? "Show as list" : "Show as poster wall"}>
               <Icon d={view === "wall" ? I.list : I.wall} size={22} sw={1.9} />
             </button>
@@ -1209,7 +1239,7 @@ function Library({ films: allFilms, customTags, extra, setExtra, onOpen, onAdd, 
             <Icon d={I.sliders} size={15} sw={2} />Filter{nActive > 0 && <span className="count tnum">{nActive}</span>}
           </button>
           <span className="lib-count tnum">
-            {colorProgress ? `Colors ${colorProgress.done}/${colorProgress.of}` : list.length === films.length ? `${list.length} films` : `${list.length} of ${films.length}`}
+            {colorProgress ? `Colors ${colorProgress.done}/${colorProgress.of}` : seen ? `${list.filter((f) => seen(f) == null).length} ${due}` : list.length === films.length ? `${list.length} films` : `${list.length} of ${films.length}`}
             {(nActive > 0 || extra) && <button className="link" onClick={() => reflow(() => { setSel({}); setExtra(null); })}>Clear</button>}
           </span>
           {view === "wall" && !(nActive > 0 || extra) && (
@@ -1244,7 +1274,7 @@ function Library({ films: allFilms, customTags, extra, setExtra, onOpen, onAdd, 
         {view === "wall" && list.length > 0 && (
           <div className="wall" style={{ "--cols": cols }} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd}>
             {letters.flatMap((g) => g.films.map((f, i) => (
-              <button key={f.key} data-key={f.key} id={grouped && i === 0 ? "L-" + g.letter : undefined} onPointerDown={() => preloadFilm(f)} onClick={(e) => onOpen(f, e)} aria-label={`${f.name} (${f.year})`}>
+              <button key={f.key} data-key={f.key} {...fadeProps(seen, f)} id={grouped && i === 0 ? "L-" + g.letter : undefined} onPointerDown={() => preloadFilm(f)} onClick={(e) => onOpen(f, e)} aria-label={`${f.name} (${f.year})`}>
                 <Poster path={f.posterPath} title={f.name} size={cols >= 5 ? "w185" : "w342"} />
               </button>
             )))}
@@ -1254,7 +1284,7 @@ function Library({ films: allFilms, customTags, extra, setExtra, onOpen, onAdd, 
           <div key={g.letter || "all"}>
             {g.letter && <div className="letter" id={"L-" + g.letter}>{g.letter}</div>}
             {g.films.map((f) => (
-              <button key={f.key} data-key={f.key} className="film-row" onPointerDown={() => preloadFilm(f)} onClick={(e) => onOpen(f, e)}>
+              <button key={f.key} data-key={f.key} className={"film-row" + (seen && seen(f) != null ? " seen" : "")} style={seen && seen(f) != null ? { "--fade": Math.max(0.35, seen(f)) } : undefined} onPointerDown={() => preloadFilm(f)} onClick={(e) => onOpen(f, e)}>
                 <Poster path={f.posterPath} title={f.name} size="w92" className="thumb" />
                 <span className="body">
                   <span className="title">{f.name}</span>
@@ -1566,6 +1596,7 @@ function ListPage({ nav = "in", below = false, entry, films, backLabel, onBack, 
   const person = entry.kind === "person" ? entry.label : null;
   const [sort, setSort] = useState(entry.sort || (person ? "oldest" : "az"));
   const colorProgress = usePosterColors(films, isColorSort(sort));
+  const { seen } = useFade();
   const list = useMemo(() => films.filter(entry.test).sort(SORTS[sort][1]), [films, entry, sort, colorProgress]);
   const roles = person ? ROLES.map(([k, l]) => [l, list.filter((f) => f[k].includes(person)).length]).filter(([, n]) => n) : [];
   const rated = list.filter((f) => f.rating != null);
@@ -1606,7 +1637,7 @@ function ListPage({ nav = "in", below = false, entry, films, backLabel, onBack, 
         {list.length === 0 ? <div className="empty">Nothing on the shelf here any more.</div> : (
           <div className="wall" style={{ "--cols": cols }}>
             {list.map((f) => (
-              <button key={f.key} data-key={f.key} onPointerDown={() => preloadFilm(f)} onClick={() => onOpen(f)} aria-label={`${f.name} (${f.year})`}>
+              <button key={f.key} data-key={f.key} {...fadeProps(seen, f)} onPointerDown={() => preloadFilm(f)} onClick={() => onOpen(f)} aria-label={`${f.name} (${f.year})`}>
                 <Poster path={f.posterPath} title={f.name} size={cols >= 5 ? "w185" : "w342"} />
               </button>
             ))}
@@ -1818,6 +1849,7 @@ function Prefs({ finish, setFinish, removed = [], onRestore }) {
   const [view, setView] = usePref("shelf-libview", "wall");
   const [sort, setSort] = usePref("shelf-sort", "az");
   const [cols, setCols] = usePref("shelf-wallcols", 4);
+  const fadeState = useFade();
   const [randomPick, setRandomPick] = usePref("shelf-random-pick", false);
   const [deal, setDeal] = usePref("shelf-deal-count", 6);
   const [brk, setBrk] = usePref("shelf-break-min", 15);
@@ -1835,6 +1867,7 @@ function Prefs({ finish, setFinish, removed = [], onRestore }) {
           <SegRow label="Opens as" value={view} options={[["wall", "Poster wall"], ["list", "List"]]} onChange={setView} />
           <PickRow label="Sort by" value={SORTS[sort] ? sort : "az"} options={Object.entries(SORTS).map(([k, [l]]) => [k, l])} onChange={setSort} />
           <SegRow label="Poster size" value={cols} options={[[3, "L"], [4, "M"], [5, "S"]]} onChange={setCols} />
+          <PickRow label="Fade watched films" value={fadeState.fade} options={FADE_MODES} onChange={fadeState.choose} />
         </div>
       </section>
       <section>

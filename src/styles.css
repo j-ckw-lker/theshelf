@@ -685,3 +685,9 @@ html[data-vt="reflow"]::view-transition-old(root), html[data-vt="reflow"]::view-
 .toast .grow { flex: 1; min-width: 0; }
 .toast .link { font-weight: 600; }
 @keyframes toast-in { from { transform: translate(-50%, 12px); opacity: 0; } to { transform: translateX(-50%); opacity: 1; } }
+
+/* ─── Fade watched ─── */
+.wall > button .poster, .film-row { transition: opacity 0.25s, filter 0.25s; }
+.wall > button.seen .poster { opacity: var(--fade, 0.26); filter: saturate(0.5); }
+.film-row.seen { opacity: var(--fade, 0.42); }
+.fade-btn.on { color: var(--accent); background: var(--accent-soft); }
