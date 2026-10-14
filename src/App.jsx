@@ -627,6 +627,61 @@ const useBodyLock = (on) => useLayoutEffect(() => {
   };
 }, [on]);
 
+// iOS (notably iOS 26) sometimes leaves everything pinned to the bottom of the screen (tab bar, toasts,
+// pages) stranded partway up after the keyboard closes, until something forces a re-layout. Self-heal:
+// an invisible marker pinned to the bottom tells us where iOS thinks the bottom is; when that's above the
+// real visible bottom, --drift pushes the pinned layer back down, and a 1px scroll nudge after typing
+// asks iOS to fix its own layout.
+function useViewportDrift() {
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const probe = document.createElement("div");
+    probe.setAttribute("aria-hidden", "true");
+    probe.style.cssText = "position:fixed;left:0;bottom:0;width:1px;height:0;pointer-events:none;visibility:hidden";
+    document.body.appendChild(probe);
+    const root = document.documentElement;
+    let raf = 0, cur = 0;
+    const typing = () => { const a = document.activeElement; return !!a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA" || a.isContentEditable); };
+    const measure = () => {
+      raf = 0;
+      let d = 0;
+      if (!typing() && Math.abs((vv.scale || 1) - 1) < 0.01) {
+        d = Math.round(vv.offsetTop + vv.height - probe.getBoundingClientRect().bottom);
+        if (d < 3 || d > window.innerHeight) d = 0;
+      }
+      if (d !== cur) { cur = d; root.style.setProperty("--drift", d + "px"); }
+    };
+    const kick = () => { if (!raf) raf = requestAnimationFrame(measure); };
+    const timers = [];
+    const afterKeyboard = () => {
+      setTimeout(() => {
+        if (typing() || document.documentElement.style.overflow === "hidden") return kick();
+        const y = window.scrollY;
+        window.scrollTo(0, y + 1); window.scrollTo(0, y);
+        kick();
+      }, 120);
+      timers.push(setTimeout(kick, 400), setTimeout(kick, 1000));
+    };
+    vv.addEventListener("resize", kick);
+    vv.addEventListener("scroll", kick);
+    window.addEventListener("scroll", kick, { passive: true });
+    window.addEventListener("resize", kick);
+    document.addEventListener("focusout", afterKeyboard);
+    document.addEventListener("visibilitychange", afterKeyboard);
+    window.addEventListener("pageshow", afterKeyboard);
+    window.addEventListener("orientationchange", afterKeyboard);
+    measure();
+    return () => {
+      cancelAnimationFrame(raf); timers.forEach(clearTimeout); probe.remove();
+      vv.removeEventListener("resize", kick); vv.removeEventListener("scroll", kick);
+      window.removeEventListener("scroll", kick); window.removeEventListener("resize", kick);
+      document.removeEventListener("focusout", afterKeyboard); document.removeEventListener("visibilitychange", afterKeyboard);
+      window.removeEventListener("pageshow", afterKeyboard); window.removeEventListener("orientationchange", afterKeyboard);
+    };
+  }, []);
+}
+
 // Floating "back to top" once you're a couple of screens down.
 function BackToTop() {
   const [show, setShow] = useState(false);
@@ -3843,6 +3898,7 @@ const TABS = [["home", "Home", I.home], ["library", "Library", I.library], ["you
 const TAB_NAMES = Object.fromEntries(TABS.map(([k, l]) => [k, l]));
 
 export default function App() {
+  useViewportDrift();
   const D = useData();
   const sync = useSync(D);
   const [tab, setTab] = useState("home");

@@ -691,3 +691,10 @@ html[data-vt="reflow"]::view-transition-old(root), html[data-vt="reflow"]::view-
 .wall > button.seen .poster { opacity: var(--fade, 0.26); filter: saturate(0.5); }
 .film-row.seen { opacity: var(--fade, 0.42); }
 .fade-btn.on { color: var(--accent); background: var(--accent-soft); }
+
+/* ─── iOS keyboard drift (see useViewportDrift): push the bottom-pinned layer back to the real bottom ─── */
+.tabbar { transform: translateY(var(--drift, 0px)); }
+.film-page { bottom: calc(var(--tabbar) - var(--drift, 0px)); }
+.to-top { bottom: calc(var(--tabbar) + 14px - var(--drift, 0px)); }
+.toast { bottom: calc(var(--tabbar) + 16px - var(--drift, 0px)); }
+.scrim { bottom: calc(0px - var(--drift, 0px)); }
