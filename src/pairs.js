@@ -21,6 +21,11 @@ const last = (name) => {
   const w = name.split(" ");
   return w.length > 2 && /^(de|del|della|di|da|van|von|le|la|du|st\.?)$/i.test(w[w.length - 2]) ? w.slice(-2).join(" ") : w[w.length - 1];
 };
+// TMDB keywords read like database tags ("paris, france"): drop the country tail and title-case them.
+const kwLabel = (k) => k.replace(/,.*$/, "").replace(/\b\w/g, (c) => c.toUpperCase());
+// Which reason gets said first. Score decides whether two films pair; this decides how the pair is explained:
+// a shared director is the headline even when a pile of shared keywords outscored it.
+const SAY_FIRST = { director: 0, cast: 1, series: 2, craft: 3, theme: 4, place: 5, time: 6 };
 const titleWords = (f) => new Set((f.name.toLowerCase().match(/[a-z0-9]{4,}/g) || []).filter((w) => !["with", "from", "that", "this", "night"].includes(w)));
 
 // Build once per collection: keyword rarity and the per-film sets the scorer needs.
@@ -51,17 +56,18 @@ export function scorePair(ix, a, b, mode = "build") {
   const kws = [...pa.kw].filter((k) => pb.kw.has(k)).map((k) => [k, ix.idf(k)]).sort((x, y) => y[1] - x[1]);
   const kwScore = 0.75 * kws.reduce((n, [, w]) => n + w, 0);
   score += kwScore;
-  if (kws.length) reasons.push({ w: kwScore, text: kws.slice(0, 2).map((k) => k[0]).join(" · "), kind: "theme" });
+  if (kws.length) reasons.push({ w: kwScore, text: kws.slice(0, 2).map((k) => kwLabel(k[0])).join(" · "), kind: "theme" });
 
   const dp = a.dop.find((d) => b.dop.includes(d));
   if (dp) { score += 3.5; reasons.push({ w: 3.5, text: "Both shot by " + dp, kind: "craft" }); }
   const mus = a.music.find((m) => b.music.includes(m));
   if (mus) { score += 3; reasons.push({ w: 3, text: "Both scored by " + mus, kind: "craft" }); }
   const actors = [...pa.cast].filter((c) => pb.cast.has(c));
-  if (actors.length) { const w = 2.5 * actors.length; score += w; reasons.push({ w, text: "Both star " + actors.map(last).join(" & "), kind: "people" }); }
+  if (actors.length) { const w = 2.5 * actors.length; score += w; reasons.push({ w, text: "Both star " + actors.map(last).join(" & "), kind: "people", say: "cast" }); }
   const dir = a.directors.find((d) => b.directors.includes(d));
-  if (dir) { score += 4; reasons.push({ w: 4, text: "Both by " + dir, kind: "people" }); }
-  if (sameSeries) { score += 2; reasons.push({ w: 2, text: "Same series", kind: "people" }); }
+  // Family-name-first names (Wong Kar-wai, Bong Joon-ho) end in a hyphenated given name: keep those whole.
+  if (dir) { score += 4; reasons.push({ w: 4, text: "Both " + (/-/.test(dir.split(" ").pop()) ? dir : last(dir)), kind: "people", say: "director" }); }
+  if (sameSeries) { score += 2; reasons.push({ w: 2, text: "Same series", kind: "people", say: "series" }); }
 
   const gap = Math.abs(a.yearNum - b.yearNum);
   if (gap === 0) { score += 1.2; reasons.push({ w: 1.2, text: "Both " + a.year, kind: "time" }); }
@@ -72,7 +78,7 @@ export function scorePair(ix, a, b, mode = "build") {
   score += Math.min(genres, 3) * 0.3;
 
   if (score < 1) return null;
-  reasons.sort((x, y) => y.w - x.w);
+  reasons.sort((x, y) => SAY_FIRST[x.say || x.kind] - SAY_FIRST[y.say || y.kind] || y.w - x.w);
   const [first, second] = a.yearNum <= b.yearNum ? [a, b] : [b, a];
   return { key: first.key + "+" + second.key, a: first, b: second, score, reasons };
 }

@@ -714,7 +714,7 @@ function usePullToRefresh(onRefresh, enabled) {
   return { pull, refreshing, dragging: pull > 0 && !refreshing };
 }
 
-function Home({ films, defs, recipes, filters, home, setHome, onOpen, onSeeAll, onSearch, onFilters, onPair, onDoubles, saved = 0, active, deck = [], deckDays = 7, deckPair, finish, onDeckPin, onDeckRemove, onDeckPick, onDeckAll }) {
+function Home({ films, defs, recipes, filters, home, setHome, onOpen, onSeeAll, onSearch, onFilters, onPair, onDoubles, saved = 0, active, deck = [], deckDays = 7, onDeckPin, onDeckRemove, onDeckPick, onDeckAll }) {
   const eligible = useMemo(() => films.filter(filterTest(defs, filters)), [films, defs, filters]);
   // A film pinned for tonight from On deck takes the hero; otherwise it's the day's pick.
   const tonight = deck.find((x) => x.tonight);
@@ -809,8 +809,7 @@ function Home({ films, defs, recipes, filters, home, setHome, onOpen, onSeeAll, 
           </div>
         </div>
 
-        <DeckShelf deck={deck} days={deckDays} pair={deckPair} finish={finish} onPin={onDeckPin} onRemove={onDeckRemove}
-          onPick={onDeckPick} onSeeAll={onDeckAll} onPair={onPair} />
+        <DeckShelf deck={deck} days={deckDays} onPin={onDeckPin} onRemove={onDeckRemove} onPick={onDeckPick} onSeeAll={onDeckAll} />
 
         <div className="deal-head">
           <span>Today's shelves</span>
@@ -3577,8 +3576,8 @@ function DeckPairCard({ pair, finish, onPair }) {
   );
 }
 
-function DeckShelf({ deck, days, pair, finish, onPin, onRemove, onPick, onSeeAll, onPair }) {
-  const tonight = deck.find((x) => x.tonight);
+// On Home the deck's own pair suggestion stays on the On deck page; Double features is right below.
+function DeckShelf({ deck, days, onPin, onRemove, onPick, onSeeAll }) {
   return (
     <section className="shelf deck-shelf" aria-label="On deck">
       <div className="shelf-head">
@@ -3610,7 +3609,6 @@ function DeckShelf({ deck, days, pair, finish, onPin, onRemove, onPick, onSeeAll
       ) : (
         <p className="deck-empty">Empty. Toss films in from any film page, or long-press a poster.</p>
       )}
-      {!tonight && <DeckPairCard pair={pair} finish={finish} onPair={onPair} />}
     </section>
   );
 }
@@ -4011,7 +4009,7 @@ export default function App() {
       <main hidden={tab !== "home"}>
         <HomeTab films={shelfFilms} defs={defs} recipes={recipes} filters={filters} home={home} setHome={setHome} active={tab === "home"}
           onOpen={openFilmE} onSeeAll={onSeeAllE} onSearch={onSearchE} onFilters={onFiltersE} onPair={setNight} onDoubles={onDoublesE} saved={D.programs.length}
-          deck={deck} deckDays={deckDays} deckPair={deckPair} finish={finish} onDeckPin={onDeckPinE} onDeckRemove={onDeckRemoveE} onDeckPick={onDeckPickE} onDeckAll={onDeckAllE} />
+          deck={deck} deckDays={deckDays} onDeckPin={onDeckPinE} onDeckRemove={onDeckRemoveE} onDeckPick={onDeckPickE} onDeckAll={onDeckAllE} />
       </main>
       {/* Tabs stay built in the background, so switching back is instant and keeps your place. */}
       <main hidden={tab !== "library"}><LibraryTab films={films} customTags={D.customTags} extra={extra} setExtra={setExtra} onOpen={openFilmE} onAdd={onAddE} searchFocus={searchFocus} onFocused={onFocusedE} reset={libReset} /></main>
