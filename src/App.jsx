@@ -11,6 +11,7 @@ import {
 } from "./lib.js";
 import { TAGS, THEMES, makeFilters, filterTest, activeFilterLabels, buildRecipes, dealShelves } from "./shelves.js";
 import { pairIndex, bestPairs, partnersFor, scorePair, nightPlan, reasonLine } from "./pairs.js";
+import { streamingPartners, peekStreaming, streamLine, loadProviders } from "./streaming.js";
 import { flushSync, createPortal } from "react-dom";
 import "./styles.css";
 
@@ -40,6 +41,14 @@ function usePref(key, def) {
     return () => window.removeEventListener(PREF_EVENT, on);
   }, [key]);
   return [v, useCallback((n) => setPrefValue(key, n), [key])];
+}
+
+// The streaming services you subscribe to, as TMDB provider ids in one preference ("8,9,258"). Empty means "anything that streams".
+const parseServices = (raw) => [...new Set(String(raw || "").split(",").map(Number).filter(Boolean))];
+function useServices() {
+  const [raw, setRaw] = usePref("shelf-services", "");
+  const list = useMemo(() => parseServices(raw), [raw]);
+  return [list, useCallback((ids) => setRaw(ids.join(",")), [setRaw])];
 }
 
 function useStored(key, initial) {
@@ -1847,6 +1856,46 @@ const SegRow = ({ label, value, options, onChange }) => (
     </div>
   </div>
 );
+// Pick the streaming services you have. The list is TMDB's own for your region, most prominent first.
+function ServicesSheet({ onClose }) {
+  const [picked, setPicked] = useServices();
+  const [list, setList] = useState(null);
+  const [error, setError] = useState("");
+  const [q, setQ] = useState("");
+  useEffect(() => {
+    let dead = false;
+    loadProviders(tmdb).then((l) => !dead && setList(l)).catch((e) => !dead && setError(e.message || "Couldn't load the list."));
+    return () => { dead = true; };
+  }, []);
+  const toggle = (id) => setPicked(picked.includes(id) ? picked.filter((x) => x !== id) : [...picked, id]);
+  const query = q.trim().toLowerCase();
+  const shown = (list || []).filter((p) => !query || p.name.toLowerCase().includes(query));
+  return (
+    <Sheet title="Streaming services" tall onClose={onClose}>
+      <p className="muted" style={{ margin: 0, fontSize: 14, lineHeight: 1.4 }}>Double feature picks only suggest films playing on the services you choose. Choose none to see anything that streams. Streaming data from JustWatch.</p>
+      <label className="search" style={{ margin: 0 }}>
+        <Icon d={I.search} size={16} sw={2.2} />
+        <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a service" aria-label="Find a streaming service" />
+      </label>
+      {!list && !error && <div className="empty">Loading services…</div>}
+      {error && <div className="empty">{error}</div>}
+      <div className="deck-add-list">
+        {shown.map((p) => {
+          const on = picked.includes(p.id);
+          return (
+            <button key={p.id} className="film-row" onClick={() => toggle(p.id)} aria-pressed={on}>
+              <span className="svc-logo">{p.logo && <img src={img(p.logo, "w92")} alt="" loading="lazy" />}</span>
+              <span className="body"><span className="title">{p.name}</span></span>
+              <span className={"deck-check" + (on ? " on" : "")}><Icon d={on ? I.check : I.plus} size={16} sw={2.6} /></span>
+            </button>
+          );
+        })}
+        {list && shown.length === 0 && <div className="empty">No service matches "{q.trim()}".</div>}
+      </div>
+    </Sheet>
+  );
+}
+
 function Prefs({ finish, setFinish, removed = [], onRestore }) {
   const [showRemoved, setShowRemoved] = useState(false);
   const [view, setView] = usePref("shelf-libview", "wall");
@@ -1861,6 +1910,8 @@ function Prefs({ finish, setFinish, removed = [], onRestore }) {
   const [deckDays, setDeckDays] = usePref("shelf-deck-days", 7);
   const [hiddenTagsPref] = usePref("shelf-hidden-tags", "");
   const sellRemoved = hiddenTagsPref.split(",").includes("sell");
+  const [services] = useServices();
+  const [servicesOpen, setServicesOpen] = useState(false);
   return (
     <div className="page prefs">
       <div className="page-head"><h1>Preferences</h1></div>
@@ -1893,7 +1944,13 @@ function Prefs({ finish, setFinish, removed = [], onRestore }) {
         <div className="you-group">
           <PickRow label="Finish by" value={finish} options={FINISH} onChange={setFinish} />
           <PickRow label="Break between films" value={brk} options={[[0, "None"], [10, "10 min"], [15, "15 min"], [20, "20 min"], [30, "30 min"]]} onChange={setBrk} />
+          <button className="pref-cell" onClick={() => setServicesOpen(true)}>
+            <span className="grow">Streaming services</span>
+            <span className="pref-val">{services.length ? services.length + " chosen" : "Any"}<Icon d={I.chev} size={12} sw={2.6} /></span>
+          </button>
         </div>
+        <p className="foot pref-foot">Streaming picks in the double feature builder only suggest films playing on these. Pick none to see anything that streams.</p>
+        {servicesOpen && <ServicesSheet onClose={() => setServicesOpen(false)} />}
       </section>
       <section>
         <div className="section-label caps pref-sec">Collection</div>
@@ -3112,9 +3169,77 @@ function PairCard({ p, finish, onOpen }) {
         <div className="dbl-why">
           {p.reasons.slice(0, 3).map((r) => <span key={r.text} className={"why why-" + r.kind}>{r.text}</span>)}
         </div>
+        {p.stream && <div className="dbl-stream">Streaming on {streamLine(p.stream)}</div>}
         {plan && <div className="dbl-plan tnum">{runtimeShort(plan.total)} · start by {plan.start}</div>}
       </div>
     </button>
+  );
+}
+
+// A few shelf films, each paired with the best thing streaming that you don't own. Loaded on request (about thirty
+// TMDB lookups per film), then kept on the device for twelve hours, so coming back to it is instant.
+function StreamingPicks({ films, ix, services, owned, seed, finish, onOpen, onServices }) {
+  const anchors = useMemo(() => {
+    const pool = films.filter((f) => f.tmdb && !f.tags.includes("sell"));
+    const loved = pool.filter((f) => (f.rating ?? 0) >= 4);
+    return shuffled(loved.length >= 8 ? loved : pool, rng(hashStr(todayISO() + "stream") + seed * 7919)).slice(0, 4);
+  }, [films, seed]);
+  const [picks, setPicks] = useState(null); // null: not loaded yet
+  const [busy, setBusy] = useState(null);
+  const [failed, setFailed] = useState(false);
+  const run = useRef(0);
+  const sig = anchors.map((a) => a.tmdb).join() + "|" + services.join();
+  // The best partner for one shelf film, with the shelf film standing in for its TMDB twin.
+  const bestFor = (a, r) => {
+    const it = r?.items?.[0];
+    if (!it) return null;
+    const swap = (f) => (f.key === r.anchor.key ? a : f);
+    return { ...it, a: swap(it.a), b: swap(it.b), key: a.key + "+" + it.outsider };
+  };
+  useEffect(() => {
+    run.current++;
+    setBusy(null); setFailed(false);
+    const cached = anchors.map((a) => peekStreaming(a.tmdb, services));
+    setPicks(anchors.length && cached.every(Boolean) ? anchors.map((a, i) => bestFor(a, cached[i])).filter(Boolean) : null);
+  }, [sig]);
+  const go = async () => {
+    const id = ++run.current;
+    setBusy({ done: 0, of: anchors.length }); setFailed(false);
+    const out = [];
+    let bad = 0;
+    for (let i = 0; i < anchors.length; i++) {
+      try {
+        const r = await streamingPartners({ tmdb, ix, anchorId: anchors[i].tmdb, owned, services });
+        const pr = bestFor(anchors[i], r);
+        if (pr) out.push(pr);
+      } catch { bad++; }
+      if (id !== run.current) return;
+      setBusy({ done: i + 1, of: anchors.length });
+    }
+    setBusy(null);
+    if (bad === anchors.length) { setFailed(true); return; }
+    setPicks(out);
+  };
+  if (!anchors.length) return null;
+  return (
+    <section className="stream-block">
+      <div className="stat-head">
+        <span className="section-label caps" style={{ margin: 0 }}>Streaming tonight</span>
+        <button className="link" style={{ fontSize: 14 }} onClick={onServices}>{services.length ? services.length + (services.length === 1 ? " service" : " services") : "Any service"}</button>
+      </div>
+      {picks == null && !busy && !failed && (
+        <button className="btn btn-outline" onClick={go}>Pair your shelf with what's streaming</button>
+      )}
+      {busy && <div className="muted" style={{ fontSize: 14 }}>Looking at film {Math.min(busy.done + 1, busy.of)} of {busy.of}…</div>}
+      {failed && <div className="muted" style={{ fontSize: 14 }}>Couldn't reach TMDB. <button className="link" style={{ fontSize: 14 }} onClick={go}>Try again</button></div>}
+      {picks && picks.length === 0 && !busy && <div className="muted" style={{ fontSize: 14 }}>Nothing streaming{services.length ? " on your services" : ""} pairs strongly with these four. Shuffle for another set.</div>}
+      {picks && picks.length > 0 && (
+        <>
+          <div className="dbl-list">{picks.map((p) => <PairCard key={p.key} p={p} finish={finish} onOpen={onOpen} />)}</div>
+          <p className="foot" style={{ margin: "2px 0 0" }}>Streaming data from JustWatch.</p>
+        </>
+      )}
+    </section>
   );
 }
 
@@ -3124,14 +3249,70 @@ function Doubles({ films, ix, programs, view, setView, anchor, setAnchor, onNigh
   const [shown, setShown] = useState(10);
   const feed = useMemo(() => shuffled(best, rng(hashStr(todayISO()) + seed * 7919)), [best, seed]);
   const [q, setQ] = useState("");
-  const anchorFilm = anchor ? films.find((f) => f.key === anchor) : null;
-  const partners = useMemo(() => (anchorFilm ? partnersFor(ix, anchorFilm, 40) : []), [ix, anchorFilm]);
+  const [services] = useServices();
+  const [servicesOpen, setServicesOpen] = useState(false);
+  const [streamPair, setStreamPair] = useState(null);
+  const owned = useMemo(() => new Set(films.map((f) => f.tmdb).filter(Boolean)), [films]);
+  // The anchor is a film on the shelf (a key) or one found on TMDB that you don't own (an object).
+  const anchorFilm = anchor ? (typeof anchor === "string" ? films.find((f) => f.key === anchor) : anchor) : null;
   const query = q.trim().toLowerCase();
   const matches = query ? films.filter((f) => f.name.toLowerCase().includes(query) || f.directors.some((d) => d.toLowerCase().includes(query))).slice(0, 30) : [];
   const recent = useMemo(() => films.filter((f) => f.lastWatched).sort((a, b) => b.lastWatched.localeCompare(a.lastWatched)).slice(0, 8), [films]);
   const byKey = useMemo(() => new Map(films.map((f) => [f.key, f])), [films]);
   const saved = programs.map((pr) => ({ pr, a: byKey.get(pr.a), b: byKey.get(pr.b) })).filter((x) => x.a && x.b);
   const pick = (f) => { setAnchor(f.key); setQ(""); toTop(); };
+  const openPair = (p) => (p.ext ? setStreamPair(p) : onNight(p));
+
+  // Search TMDB as you type, for films you don't own. "heat 1995" narrows by year.
+  const [web, setWeb] = useState({ q: "", list: null, busy: false, error: false });
+  useEffect(() => {
+    if (view !== "build" || anchorFilm || query.length < 2) { setWeb({ q: "", list: null, busy: false, error: false }); return; }
+    let dead = false;
+    setWeb((w) => ({ ...w, busy: true, error: false }));
+    const t = setTimeout(async () => {
+      const raw = q.trim();
+      const yr = /\s(19|20)\d{2}$/.exec(raw);
+      const text = yr ? raw.slice(0, yr.index).trim() : raw;
+      try {
+        const res = await tmdb("/search/movie", { query: text.length >= 2 ? text : raw, ...(yr && text.length >= 2 ? { year: yr[0].trim() } : {}) });
+        if (!dead) setWeb({ q: query, list: (res.results || []).slice(0, 12), busy: false, error: false });
+      } catch { if (!dead) setWeb({ q: query, list: [], busy: false, error: true }); }
+    }, 350);
+    return () => { dead = true; clearTimeout(t); };
+  }, [query, view, anchorFilm]);
+  const webList = web.q === query && web.list ? web.list.filter((r) => !owned.has(r.id)) : [];
+  const pickWeb = (r) => {
+    const year = (r.release_date || "").slice(0, 4);
+    setAnchor({ ext: true, key: "tmdb:" + r.id, tmdb: r.id, name: r.title, year, yearNum: parseInt(year) || 0, posterPath: r.poster_path || null, directors: [], tags: [] });
+    setQ(""); toTop();
+  };
+
+  // What's streaming that pairs with the anchor: any film with a TMDB match, on your shelf or not.
+  const [stream, setStream] = useState({ state: "idle" });
+  const [streamTry, setStreamTry] = useState(0);
+  const servicesSig = services.join();
+  useEffect(() => {
+    if (view !== "build" || !anchorFilm?.tmdb) { setStream({ state: "idle" }); return; }
+    let dead = false;
+    // A film from outside the shelf keeps its credits while the picks reload, so its shelf partners don't blink away.
+    setStream((s) => ({ state: "loading", anchor: s.anchor?.tmdb === anchorFilm.tmdb ? s.anchor : undefined }));
+    streamingPartners({ tmdb, ix, anchorId: anchorFilm.tmdb, owned, services, fresh: streamTry > 0 })
+      .then((r) => !dead && setStream({ state: "done", ...r }))
+      .catch((e) => !dead && setStream({ state: "error", error: e.message }));
+    return () => { dead = true; };
+  }, [view, anchorFilm?.key, servicesSig, streamTry]);
+  // A film you don't own needs its full TMDB details (crew, keywords) before the shelf can be searched for partners.
+  const anchorFull = anchorFilm?.ext ? stream.anchor : anchorFilm;
+  const partners = useMemo(() => {
+    if (!anchorFull) return [];
+    const list = partnersFor(ix, anchorFull, 40);
+    return anchorFilm.ext ? list.map((p) => ({ ...p, ext: true, outsider: anchorFull.key })) : list;
+  }, [ix, anchorFull]);
+  // Streaming pairs come back with the anchor as its TMDB twin; stand the real thing (your copy) in for it.
+  const streamPairs = useMemo(() => (stream.items || []).map((p) => {
+    const swap = (f) => (f.key === stream.anchor.key ? anchorFull : f);
+    return { ...p, a: swap(p.a), b: swap(p.b) };
+  }), [stream, anchorFull]);
 
   return (
     <div className="page">
@@ -3150,6 +3331,7 @@ function Doubles({ films, ix, programs, view, setView, anchor, setAnchor, onNigh
               <Icon d={I.shuffle} size={15} sw={2.2} />Shuffle
             </button>
           </div>
+          <StreamingPicks films={films} ix={ix} services={services} owned={owned} seed={seed} finish={finish} onOpen={openPair} onServices={() => setServicesOpen(true)} />
           {feed.length === 0 && <div className="empty">Not enough overlap on the shelf to pair anything yet.</div>}
           <div className="dbl-list">
             {feed.slice(0, shown).map((p) => <PairCard key={p.key} p={p} finish={finish} onOpen={onNight} />)}
@@ -3164,16 +3346,16 @@ function Doubles({ films, ix, programs, view, setView, anchor, setAnchor, onNigh
             <div className="anchor">
               <Poster path={anchorFilm.posterPath} title={anchorFilm.name} size="w185" />
               <div className="grow">
-                <span className="muted" style={{ fontSize: 13 }}>Starting with</span>
+                <span className="muted" style={{ fontSize: 13 }}>Starting with{anchorFilm.ext ? " · not on your shelf" : ""}</span>
                 <strong>{anchorFilm.name}</strong>
-                <span className="muted tnum" style={{ fontSize: 14 }}>{[anchorFilm.year, anchorFilm.directors[0], runtimeLabel(anchorFilm.runtime)].filter(Boolean).join(" · ")}</span>
+                <span className="muted tnum" style={{ fontSize: 14 }}>{[anchorFull?.year || anchorFilm.year, anchorFull?.directors?.[0], runtimeLabel(anchorFull?.runtime)].filter(Boolean).join(" · ")}</span>
               </div>
               <button className="link" onClick={() => setAnchor(null)}>Change</button>
             </div>
           ) : (
             <label className="search">
               <Icon d={I.search} size={16} sw={2.2} />
-              <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Pick a film to build around" aria-label="Pick a film to build around" />
+              <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search any film to build around" aria-label="Search any film to build around" />
             </label>
           )}
 
@@ -3190,23 +3372,38 @@ function Doubles({ films, ix, programs, view, setView, anchor, setAnchor, onNigh
           )}
           {!anchorFilm && query && (
             <div>
-              {matches.length === 0 && <div className="empty">Nothing on the shelf matches "{q.trim()}".</div>}
+              {matches.length > 0 && <div className="section-label caps">On your shelf</div>}
               {matches.map((f) => (
                 <button key={f.key} className="film-row" style={{ padding: "6px 0" }} onClick={() => pick(f)}>
                   <Poster path={f.posterPath} title={f.name} size="w92" className="thumb" />
                   <span className="body"><span className="title">{f.name}</span><span className="meta tnum"><span>{f.year}</span><span className="who">{f.directors[0]}</span></span></span>
                 </button>
               ))}
+              {(web.busy || webList.length > 0) && <div className="section-label caps" style={{ marginTop: matches.length ? 10 : 0 }}>Not on your shelf</div>}
+              {web.busy && webList.length === 0 && <div className="muted" style={{ fontSize: 14, padding: "6px 0" }}>Searching TMDB…</div>}
+              {webList.map((r) => {
+                const year = (r.release_date || "").slice(0, 4);
+                return (
+                  <button key={r.id} className="film-row" style={{ padding: "6px 0" }} onClick={() => pickWeb(r)}>
+                    <Poster path={r.poster_path} title={r.title} size="w92" className="thumb" />
+                    <span className="body"><span className="title">{r.title}</span><span className="meta tnum"><span>{year}</span><span className="who">{r.overview}</span></span></span>
+                  </button>
+                );
+              })}
+              {!web.busy && matches.length === 0 && webList.length === 0 && (
+                <div className="empty">{web.error ? "Couldn't search TMDB right now. Films on your shelf still match above." : `Nothing matches "${q.trim()}".`}</div>
+              )}
             </div>
           )}
           {anchorFilm && (
             <div>
               <div className="section-label">Best partners on your shelf</div>
-              {partners.length === 0 && <div className="empty">Nothing on the shelf shares enough with this one. Try another film.</div>}
+              {anchorFilm.ext && !anchorFull && stream.state !== "error" && <div className="muted" style={{ fontSize: 14, padding: "6px 0" }}>Reading the film's credits…</div>}
+              {anchorFull && partners.length === 0 && <div className="empty">Nothing on the shelf shares enough with this one. Try another film.</div>}
               {partners.map((p) => {
-                const other = p.a.key === anchorFilm.key ? p.b : p.a;
+                const other = p.a.key === anchorFull.key ? p.b : p.a;
                 return (
-                  <button key={p.key} className="film-row partner" style={{ padding: "6px 0" }} onClick={() => onNight(p)}>
+                  <button key={p.key} className="film-row partner" style={{ padding: "6px 0" }} onClick={() => openPair(p)}>
                     <Poster path={other.posterPath} title={other.name} size="w92" className="thumb" />
                     <span className="body">
                       <span className="title">{other.name} <span className="muted tnum" style={{ fontSize: 14 }}>{other.year}</span></span>
@@ -3216,6 +3413,34 @@ function Doubles({ films, ix, programs, view, setView, anchor, setAnchor, onNigh
                   </button>
                 );
               })}
+
+              <div className="stat-head" style={{ marginTop: 18, marginBottom: 6 }}>
+                <span className="section-label" style={{ margin: 0 }}>Streaming now</span>
+                <button className="link" style={{ fontSize: 14 }} onClick={() => setServicesOpen(true)}>{services.length ? services.length + (services.length === 1 ? " service" : " services") : "Any service"}</button>
+              </div>
+              {!anchorFilm.tmdb && <div className="muted" style={{ fontSize: 14, padding: "6px 0" }}>This film has no TMDB match, so there's nothing to look up.</div>}
+              {anchorFilm.tmdb && stream.state === "loading" && <div className="muted" style={{ fontSize: 14, padding: "6px 0" }}>Looking for what's streaming…</div>}
+              {stream.state === "error" && (
+                <div className="muted" style={{ fontSize: 14, padding: "6px 0" }}>Couldn't load streaming picks. <button className="link" style={{ fontSize: 14 }} onClick={() => setStreamTry((n) => n + 1)}>Try again</button></div>
+              )}
+              {stream.state === "done" && streamPairs.length === 0 && (
+                <div className="empty" style={{ padding: "18px 0" }}>Nothing streaming{services.length ? " on your services" : ""} pairs strongly with this one.{services.length > 0 && <> <button className="link" onClick={() => setServicesOpen(true)}>Change services</button></>}</div>
+              )}
+              {streamPairs.map((p) => {
+                const other = p.a.key === anchorFull.key ? p.b : p.a;
+                return (
+                  <button key={p.key} className="film-row partner" style={{ padding: "6px 0" }} onClick={() => openPair(p)}>
+                    <Poster path={other.posterPath} title={other.name} size="w92" className="thumb" />
+                    <span className="body">
+                      <span className="title">{other.name} <span className="muted tnum" style={{ fontSize: 14 }}>{other.year}</span></span>
+                      <span className="meta"><span className="who">{reasonLine(p, 2)}</span></span>
+                      <span className="meta accent"><span className="who">{streamLine(p.stream)}</span></span>
+                    </span>
+                    <span className="match tnum" aria-label={"Match strength " + Math.round(p.score)}>{Math.round(p.score)}</span>
+                  </button>
+                );
+              })}
+              {stream.state === "done" && streamPairs.length > 0 && <p className="foot" style={{ margin: "8px 0 0" }}>Streaming data from JustWatch.</p>}
             </div>
           )}
         </>
@@ -3245,7 +3470,64 @@ function Doubles({ films, ix, programs, view, setView, anchor, setAnchor, onNigh
           ))}
         </div>
       )}
+      {servicesOpen && <ServicesSheet onClose={() => setServicesOpen(false)} />}
+      {streamPair && <StreamSheet pair={streamPair} shelf={byKey} finish={finish} onClose={() => setStreamPair(null)} />}
     </div>
+  );
+}
+
+// A pair with a film from outside the shelf (one you could stream, or one you searched for): the same night math and
+// reasons as a shelf pair, plus where to watch. Nothing to log or save here, since one of the two isn't yours.
+function StreamSheet({ pair, shelf, finish, onClose }) {
+  const [order, setOrder] = useState(() => [pair.a, pair.b]);
+  const [first, second] = order;
+  const [brk] = usePref("shelf-break-min", 15);
+  const plan = nightPlan(first, second, finish, brk);
+  const label = (f) => (shelf.has(f.key) ? "On your shelf" : pair.stream && f.key === pair.outsider ? "Streaming" : "Not on your shelf");
+  return (
+    <Sheet title="Double feature" onClose={onClose} tall>
+      <div className="night-posters">
+        {order.map((f, i) => (
+          <div key={f.key} className="night-film">
+            <span className="night-n">{i + 1}</span>
+            <Poster path={f.posterPath} title={f.name} size="w342" />
+            <span className="title">{f.name}</span>
+            <span className="muted tnum">{[f.year, runtimeLabel(f.runtime)].filter(Boolean).join(" · ")}</span>
+            <span className={"night-where" + (shelf.has(f.key) ? "" : " out")}>{label(f)}</span>
+          </div>
+        ))}
+        <button className="night-swap" onClick={() => setOrder([second, first])} aria-label="Swap the running order"><Icon d={I.swap} size={18} sw={2.2} /></button>
+      </div>
+
+      {pair.reasons?.length > 0 && (
+        <section className="stat-section" style={{ gap: 0 }}>
+          <div className="section-label">Why they pair</div>
+          {pair.reasons.map((r) => (
+            <div key={r.text} className="list-row"><span className={"why-dot why-" + r.kind} aria-hidden="true" /><span className="grow">{r.text.replace(/^\w/, (c) => c.toUpperCase())}</span></div>
+          ))}
+        </section>
+      )}
+
+      {pair.stream && (
+        <section className="stat-section" style={{ gap: 0 }}>
+          <div className="section-label">Where to watch {pair.a.key === pair.outsider ? pair.a.name : pair.b.name}</div>
+          {pair.stream.on.map((p) => (
+            <div key={p.id} className="list-row"><span className="grow">{p.name}</span><span className="muted" style={{ fontSize: 13 }}>{p.kind === "flatrate" ? "Subscription" : p.kind === "free" ? "Free" : "Free with ads"}</span></div>
+          ))}
+          {pair.stream.link && <a className="link" style={{ marginTop: 10, alignSelf: "flex-start" }} href={pair.stream.link} target="_blank" rel="noreferrer">See all the ways to watch</a>}
+          <p className="foot" style={{ margin: "8px 0 0" }}>Streaming data from JustWatch. It changes often, so check before you settle in.</p>
+        </section>
+      )}
+
+      {plan && (
+        <section className="stat-section" style={{ gap: 0 }}>
+          <div className="section-label">The night</div>
+          <div className="list-row"><span className="grow muted">{brk ? `Running time, with a ${brk}-minute break` : "Running time, back to back"}</span><span className="tnum">{runtimeShort(plan.total)}</span></div>
+          <div className="list-row"><span className="grow muted">Finish by</span><span>{FINISH.find((x) => x[0] === finish)?.[1]}</span></div>
+          <div className="list-row"><span className="grow">Start by</span><span className="tnum accent" style={{ fontWeight: 600 }}>{plan.start}</span></div>
+        </section>
+      )}
+    </Sheet>
   );
 }
 

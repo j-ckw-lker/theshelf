@@ -7,8 +7,18 @@ const ALLOWED = [
   /^\/(movie|tv)\/\d+$/,
   /^\/(movie|tv)\/\d+\/images$/,
   /^\/person\/\d+$/,
+  // Streaming: where a film is playing, the list of services, and "films like this that are streaming" searches.
+  /^\/movie\/\d+\/watch\/providers$/,
+  /^\/watch\/providers\/movie$/,
+  /^\/discover\/movie$/,
 ];
-const PASS_PARAMS = ["query", "year", "include_image_language", "language", "page", "append_to_response"];
+const PASS_PARAMS = [
+  "query", "year", "include_image_language", "language", "page", "append_to_response",
+  "watch_region", "with_watch_providers", "with_watch_monetization_types", "with_crew", "with_cast", "with_keywords",
+  "sort_by", "vote_count.gte", "with_runtime.gte", "primary_release_date.lte", "include_adult",
+];
+// What's streaming changes week to week; credits and posters barely change.
+const FAST = /^\/(movie\/\d+\/watch\/providers|watch\/providers\/movie|discover\/movie)$/;
 
 export default async function handler(req, res) {
   const key = (process.env.TMDB_API_KEY || process.env.TMDB || "").trim();
@@ -26,8 +36,8 @@ export default async function handler(req, res) {
   try {
     const r = await fetch(url, { headers });
     const body = await r.text();
-    // Poster lists barely change; let Vercel's edge cache absorb repeat requests.
-    if (r.ok) res.setHeader("Cache-Control", "public, s-maxage=86400, stale-while-revalidate=604800");
+    // Poster lists barely change; let Vercel's edge cache absorb repeat requests. Streaming lookups go stale fast.
+    if (r.ok) res.setHeader("Cache-Control", FAST.test(path) ? "public, s-maxage=21600, stale-while-revalidate=43200" : "public, s-maxage=86400, stale-while-revalidate=604800");
     res.setHeader("Content-Type", "application/json");
     return res.status(r.status).send(body);
   } catch {

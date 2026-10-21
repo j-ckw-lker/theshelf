@@ -39,21 +39,36 @@ export function pairIndex(films) {
     cast: new Set(f.cast.slice(0, 3)),
     words: titleWords(f),
   }]));
-  return { idf, prep, films };
+  // A film that isn't on the shelf (a streaming pick, a TMDB search result) can share keywords the shelf has barely
+  // seen. Measure rarity as if that film were on the shelf too, capped so a pile of obscure keywords can't outweigh a
+  // shared director. Preps for those films are built on first use and kept.
+  const idfExt = (k) => (BORING_KW.has(k) || df.get(k) > 40 ? 0 : Math.min(4.5, Math.log((N + 1) / ((df.get(k) || 0) + 1))));
+  return { idf, idfExt, prep, extPrep: new Map(), films };
+}
+
+function extPrepFor(ix, f) {
+  let p = ix.extPrep.get(f.key);
+  if (!p) {
+    p = { kw: new Set((f.keywords || []).filter((k) => ix.idfExt(k) > 0)), cast: new Set((f.cast || []).slice(0, 3)), words: titleWords(f) };
+    ix.extPrep.set(f.key, p);
+  }
+  return p;
 }
 
 // Score a pair. mode "feed" skips sequels and franchise lookalikes; "build" keeps them with a reason.
 export function scorePair(ix, a, b, mode = "build") {
   if (a.key === b.key) return null;
-  const pa = ix.prep.get(a.key), pb = ix.prep.get(b.key);
-  if (!pa || !pb) return null;
+  // Both on the shelf: the shelf's own index. Otherwise (one side from outside) both are read the outside way.
+  const ext = !ix.prep.has(a.key) || !ix.prep.has(b.key);
+  const pa = ext ? extPrepFor(ix, a) : ix.prep.get(a.key), pb = ext ? extPrepFor(ix, b) : ix.prep.get(b.key);
+  const idf = ext ? ix.idfExt : ix.idf;
   const sameSeries = a.collection && a.collection === b.collection;
   const lookalike = [...pb.words].some((w) => pa.words.has(w));
   if (mode === "feed" && (sameSeries || lookalike)) return null;
 
   const reasons = [];
   let score = 0;
-  const kws = [...pa.kw].filter((k) => pb.kw.has(k)).map((k) => [k, ix.idf(k)]).sort((x, y) => y[1] - x[1]);
+  const kws = [...pa.kw].filter((k) => pb.kw.has(k)).map((k) => [k, idf(k)]).sort((x, y) => y[1] - x[1]);
   const kwScore = 0.75 * kws.reduce((n, [, w]) => n + w, 0);
   score += kwScore;
   if (kws.length) reasons.push({ w: kwScore, text: kws.slice(0, 2).map((k) => kwLabel(k[0])).join(" · "), kind: "theme" });
