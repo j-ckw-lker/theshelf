@@ -2345,6 +2345,8 @@ function FilmPage({ nav = "in", below = false, onPeek, wanted, deckItem, deckDay
           </div>
           {deckItem && <div className="deck-hint">{deckItem.tonight ? "Pinned for tonight. " : `On deck until ${deckUntil(deckItem, deckDays)}. `}Tap again to take it off.</div>}
 
+          <Synopsis film={film} onUpdate={onUpdate} />
+
           <section>
             <div className="stat-head" style={{ marginBottom: 8 }}>
               <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>On your shelf</h2>
@@ -3541,6 +3543,90 @@ function ScoreLine({ tmdbId, className = "critics" }) {
 }
 // One critics number for comparisons: Metascore when there is one, else RT, else IMDb ×10.
 const criticOf = (s) => (!s || !s.found ? null : s.meta != null ? { v: s.meta, src: "Metascore" } : s.rt != null ? { v: s.rt, src: "RT" } : s.imdb != null ? { v: Math.round(s.imdb * 10), src: "IMDb" } : null);
+
+// ─── SYNOPSES ───────────────────────────────────────────────────────────
+// TMDB's overview for a film, fetched when its page opens and kept on this device. A synopsis you write
+// yourself (film.synopsis, stored with the film's other edits) wins over TMDB's; clear it to go back.
+// TMDB's blurbs are sometimes blank or marketing sludge, which is what the edit button is for.
+const overviewCache = readJSON("shelf-overviews", {});
+const OVERVIEW_RETRY = 30 * 864e5; // a blank overview gets another look after a month; real ones stay
+const overviewState = { inflight: new Map(), subs: new Set(), saveT: null };
+const overviewFresh = (id) => { const c = overviewCache[id]; return c && (c.t || Date.now() - c.at < OVERVIEW_RETRY) ? c : null; };
+function fetchOverview(tmdbId) {
+  const id = String(tmdbId || "");
+  if (!/^\d+$/.test(id)) return Promise.resolve(null);
+  const hit = overviewFresh(id);
+  if (hit) return Promise.resolve(hit);
+  if (overviewState.inflight.has(id)) return overviewState.inflight.get(id);
+  const p = tmdb(`/movie/${id}`, { language: "en-US" }).then((d) => {
+    overviewCache[id] = { t: (d.overview || "").trim(), at: Date.now() };
+    clearTimeout(overviewState.saveT);
+    overviewState.saveT = setTimeout(() => store.set("shelf-overviews", JSON.stringify(overviewCache)), 400);
+    overviewState.subs.forEach((f) => f());
+    return overviewCache[id];
+  }).catch(() => null).finally(() => overviewState.inflight.delete(id));
+  overviewState.inflight.set(id, p);
+  return p;
+}
+
+function Synopsis({ film, onUpdate }) {
+  const [, bump] = useState(0);
+  useEffect(() => {
+    const f = () => bump((n) => n + 1);
+    overviewState.subs.add(f);
+    return () => overviewState.subs.delete(f);
+  }, []);
+  useEffect(() => { if (film.tmdb) fetchOverview(film.tmdb); }, [film.tmdb]);
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  useEffect(() => { setOpen(false); setEditing(false); }, [film.key]);
+
+  const fromTmdb = film.tmdb ? overviewFresh(String(film.tmdb))?.t || "" : "";
+  const loading = !!film.tmdb && !overviewFresh(String(film.tmdb)) && overviewState.inflight.has(String(film.tmdb));
+  const mine = (film.synopsis || "").trim();
+  const text = mine || fromTmdb;
+  const startEdit = () => { setDraft(text); setEditing(true); };
+  const save = () => {
+    const v = draft.trim();
+    // Saving TMDB's own words back unchanged isn't an override; leave the film on TMDB's.
+    onUpdate(film.key, { synopsis: v && v !== fromTmdb ? v : undefined });
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <section>
+        <label className="section-label" htmlFor="synopsis">Synopsis</label>
+        <textarea id="synopsis" className="notes" value={draft} onChange={(e) => setDraft(e.target.value)} autoFocus
+          placeholder="What it's about, in your words" />
+        <div style={{ display: "flex", gap: 22, alignItems: "center", marginTop: 8 }}>
+          <button className="link" onClick={save}>Save</button>
+          <button className="link" style={{ color: "var(--label-2)" }} onClick={() => setEditing(false)}>Cancel</button>
+          {mine && fromTmdb && <button className="link" style={{ color: "var(--label-2)" }} onClick={() => { onUpdate(film.key, { synopsis: undefined }); setEditing(false); }}>Use TMDB's</button>}
+        </div>
+      </section>
+    );
+  }
+  if (!text) {
+    if (loading) return <div className="muted" style={{ fontSize: 14 }}>Loading synopsis…</div>;
+    return (
+      <div className="muted" style={{ fontSize: 14 }}>
+        No synopsis yet. <button className="link" style={{ fontSize: 14 }} onClick={startEdit}>Write one</button>
+      </div>
+    );
+  }
+  const long = text.length > 230;
+  return (
+    <section>
+      <p className={"synopsis" + (long && !open ? " clamp" : "")}>{text}</p>
+      <div style={{ display: "flex", gap: 22, alignItems: "center", marginTop: 6 }}>
+        {long && <button className="link" style={{ fontSize: 14 }} onClick={() => setOpen(!open)}>{open ? "Less" : "More"}</button>}
+        <button className="link" style={{ fontSize: 14, color: "var(--label-2)" }} onClick={startEdit}>{mine ? "Edit your synopsis" : "Edit"}</button>
+      </div>
+    </section>
+  );
+}
 
 function CriticsSection({ films }) {
   const all = useScores();

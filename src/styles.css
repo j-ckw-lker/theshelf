@@ -206,6 +206,8 @@ img { display: block; }
 .tag-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .notes { width: 100%; min-height: 84px; resize: vertical; border: 0.5px solid var(--rule); border-radius: 9px; background: var(--bg-2); padding: 10px 12px; font-size: 15px; line-height: 1.4; color: var(--label); outline: none; }
 .notes::placeholder { color: var(--label-3); }
+.synopsis { margin: 0; font-size: 15px; line-height: 1.45; color: rgba(246, 244, 240, 0.86); }
+.synopsis.clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; line-clamp: 4; overflow: hidden; }
 .danger { color: var(--danger); font-size: 15px; align-self: flex-start; }
 
 .suggest { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; padding: 10px 12px; margin-bottom: 6px; border-radius: 9px; background: var(--accent-soft); font-size: 14px; line-height: 1.4; color: rgba(246, 244, 240, 0.85); }
