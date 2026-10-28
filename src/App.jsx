@@ -2316,6 +2316,40 @@ function PeekSheet({ f, onWant, wanted, onOwn, onClose }) {
 }
 
 // ─── FILM PAGE ──────────────────────────────────────────────────────────
+// Behind-the-scenes trivia, pulled from Wikipedia by scripts/trivia (see review.json for the evidence behind each card).
+// The file is loaded on demand so it never weighs down the first paint, and a film with no cards shows nothing at all.
+let triviaCache = null;
+function useTrivia() {
+  const [data, setData] = useState(triviaCache);
+  useEffect(() => {
+    if (triviaCache) return;
+    let dead = false;
+    import("./trivia.json").then((m) => { triviaCache = m.default; if (!dead) setData(m.default); }).catch(() => {});
+    return () => { dead = true; };
+  }, []);
+  return data;
+}
+
+function Trivia({ film }) {
+  const all = useTrivia();
+  const [more, setMore] = useState(false);
+  useEffect(() => setMore(false), [film.key]);
+  const t = all && film.tmdb && (film.tmdbType || "movie") === "movie" ? all[film.tmdb] : null;
+  if (!t || !t.c.length) return null;
+  const shown = more ? t.c : t.c.slice(0, 3);
+  return (
+    <section className="trivia">
+      <div className="stat-head" style={{ marginBottom: 4 }}>
+        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 600 }}>Trivia</h2>
+        <span className="muted tnum" style={{ fontSize: 13 }}>{t.c.length}</span>
+      </div>
+      {shown.map((c, i) => <p key={i} className="trivia-card">{c}</p>)}
+      {t.c.length > 3 && <button className="link" onClick={() => setMore(!more)}>{more ? "Show fewer" : `Show ${t.c.length - 3} more`}</button>}
+      <p className="foot">From <a href={t.u} target="_blank" rel="noopener noreferrer">Wikipedia</a>, licensed CC BY-SA 4.0.</p>
+    </section>
+  );
+}
+
 function FilmPage({ nav = "in", below = false, onPeek, wanted, deckItem, deckDays = 7, onDeckToggle, film, films, ix, onNight, onBuildAround, allTags, backLabel, onBack, onOpen, onPerson, onUpdate, onLog, onUnlog, onRemove, onPicker, onAddTag, onRemoveTag, onEditCopy, onEditDetails }) {
   const [note, setNote] = useState(film.note);
   const [newTag, setNewTag] = useState(null);
@@ -2497,6 +2531,8 @@ function FilmPage({ nav = "in", below = false, onPeek, wanted, deckItem, deckDay
             <textarea id="notes" className="notes" value={note} onChange={(e) => setNote(e.target.value)} onBlur={() => note !== film.note && onUpdate(film.key, { note })}
               placeholder="Edition details, upgrade plans, who borrowed it" />
           </div>
+
+          <Trivia film={film} />
 
           {pairsWith.length > 0 && (
             <section>

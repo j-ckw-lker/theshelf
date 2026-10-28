@@ -699,3 +699,9 @@ html[data-vt="reflow"]::view-transition-old(root), html[data-vt="reflow"]::view-
 .wall > button.seen .poster { opacity: var(--fade, 0.26); filter: saturate(0.5); }
 .film-row.seen { opacity: var(--fade, 0.42); }
 .fade-btn.on { color: var(--accent); background: var(--accent-soft); }
+
+/* Trivia on the film page */
+.trivia-card { margin: 0; padding: 10px 0; border-bottom: 0.5px solid var(--rule-soft); font-size: 15px; line-height: 1.45; color: rgba(246, 244, 240, 0.88); }
+.trivia .link { display: block; padding: 10px 0 0; }
+.trivia .foot { margin: 8px 0 0; }
+.trivia .foot a { color: var(--accent-text); }

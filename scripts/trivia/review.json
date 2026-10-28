@@ -1,0 +1,58 @@
+{
+ "13122": {
+  "name": "The People Under the Stairs", "year": "1991", "wiki": "https://en.wikipedia.org/wiki/The_People_Under_the_Stairs", "built": "2026-10-28", "seed": true,
+  "cards": [
+   { "id": "13122-1", "kind": "writing", "ok": true, "text": "Wes Craven built the story from a 1978 news item about two burglars who found children locked away in a Los Angeles house by their parents." },
+   { "id": "13122-2", "kind": "writing", "ok": true, "text": "Craven feared Universal would reject a young Black lead and such a bizarre premise, but producers Tom Pollock and James Jacks backed the script." },
+   { "id": "13122-3", "kind": "casting", "ok": true, "text": "Everett McGill and Wendy Robie were cast as the Robesons after playing the married couple Big Ed and Nadine on Twin Peaks." },
+   { "id": "13122-4", "kind": "release", "ok": true, "text": "Craven expected an NC-17, but the MPAA only asked for trims to one sequence, the one involving a gelatin liver prop." }
+  ]
+ },
+ "4547": {
+  "name": "Panic Room", "year": "2002", "wiki": "https://en.wikipedia.org/wiki/Panic_Room", "built": "2026-10-28", "seed": true,
+  "cards": [
+   { "id": "4547-1", "kind": "casting", "ok": true, "text": "Nicole Kidman was cast as Meg but left in early 2001 when a knee injury from Moulin Rouge! flared up. Jodie Foster replaced her and the role was rewritten to be stronger." },
+   { "id": "4547-2", "kind": "shoot", "ok": true, "text": "Cinematographer Darius Khondji was fired early in filming and replaced by Conrad W. Hall." },
+   { "id": "4547-3", "kind": "shoot", "ok": true, "text": "Production was suspended after studio executives disliked dailies in which Foster was concealing her pregnancy, and resumed once she had given birth." },
+   { "id": "4547-4", "kind": "shoot", "ok": true, "text": "The house and panic room were built on a Raleigh Studios soundstage for about $6 million, with three versions of the room constructed." },
+   { "id": "4547-5", "kind": "writing", "ok": true, "text": "David Koepp drew on 2000 news coverage of safe rooms for the script, which he sold to Sony for $4 million." }
+  ]
+ },
+ "4488": {
+  "name": "Friday the 13th", "year": "1980", "wiki": "https://en.wikipedia.org/wiki/Friday_the_13th_(1980_film)", "built": "2026-10-28", "seed": true,
+  "cards": [
+   { "id": "4488-1", "kind": "writing", "ok": true, "text": "Victor Miller's screenplay was first titled A Long Night at Camp Blood." },
+   { "id": "4488-2", "kind": "casting", "ok": true, "text": "The producers wanted Sally Field for Alice but couldn't afford her, so they held an open casting call." },
+   { "id": "4488-3", "kind": "casting", "ok": true, "text": "Estelle Parsons was the first choice for Mrs. Voorhees but declined. Betsy Palmer took the role partly to pay for a new car." },
+   { "id": "4488-4", "kind": "shoot", "ok": true, "text": "Filming began in September 1979 at a working Boy Scout camp in Warren County, New Jersey. Unexpected snow forced a prologue scene indoors into a barn." },
+   { "id": "4488-5", "kind": "effects", "ok": true, "text": "Tom Savini made a prosthetic head from Palmer's likeness for the decapitation shot, which was filmed without the actresses present." }
+  ]
+ },
+ "1359": {
+  "name": "American Psycho", "year": "2000", "wiki": "https://en.wikipedia.org/wiki/American_Psycho_(film)", "built": "2026-10-28", "seed": true,
+  "cards": [
+   { "id": "1359-1", "kind": "casting", "ok": true, "text": "Lionsgate pushed to cast Leonardo DiCaprio, so director Mary Harron was fired, then rehired after DiCaprio and Oliver Stone left the project." },
+   { "id": "1359-2", "kind": "casting", "ok": true, "text": "Harron suggested Christian Bale go to a gym for the role, and he reportedly transformed within about two weeks." },
+   { "id": "1359-3", "kind": "shoot", "ok": true, "text": "Principal photography ran seven weeks on a $7 million budget, mostly in downtown Toronto. The office scenes were shot on a sound stage because building owners feared negative publicity." },
+   { "id": "1359-4", "kind": "music", "ok": true, "text": "Whitney Houston refused to let her recording of \"The Greatest Love of All\" be used, so an orchestral arrangement went in instead." }
+  ]
+ },
+ "44214": {
+  "name": "Black Swan", "year": "2010", "wiki": "https://en.wikipedia.org/wiki/Black_Swan_(film)", "built": "2026-10-28", "seed": true,
+  "cards": [
+   { "id": "44214-1", "kind": "writing", "ok": true, "text": "Darren Aronofsky combined his viewings of Swan Lake with an unproduced screenplay, The Understudy, about being haunted by a double." },
+   { "id": "44214-2", "kind": "writing", "ok": true, "text": "Aronofsky and Natalie Portman first discussed a ballet film in 2000, after Requiem for a Dream." },
+   { "id": "44214-3", "kind": "casting", "ok": true, "text": "Portman and Mila Kunis trained for about six months before filming to build bodies closer to professional dancers." },
+   { "id": "44214-4", "kind": "stunts", "ok": true, "text": "American Ballet Theatre soloists Sarah Lane and María Riccetto served as the dance doubles for Portman and Kunis." },
+   { "id": "44214-5", "kind": "shoot", "ok": true, "text": "It was shot on Super 16mm in New York City from late 2009, with a grainy look meant to echo The Wrestler." }
+  ]
+ },
+ "840326": {
+  "name": "Sisu", "year": "2022", "wiki": "https://en.wikipedia.org/wiki/Sisu_(film)", "built": "2026-10-28", "seed": true,
+  "cards": [
+   { "id": "840326-1", "kind": "writing", "ok": true, "text": "Jalmari Helander's planned follow-up was the sci-fi comedy Jerry and Ms. Universe, but the COVID-19 pandemic led him to make Sisu instead." },
+   { "id": "840326-2", "kind": "shoot", "ok": true, "text": "Sisu was shot in 2021 near Nuorgam village in Utsjoki, Lapland, on a budget of about €6 million." },
+   { "id": "840326-3", "kind": "writing", "ok": true, "text": "Helander has said First Blood and the Finnish sniper Simo Häyhä inspired the film." }
+  ]
+ }
+}
