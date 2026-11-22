@@ -59,6 +59,47 @@ try {
     assert.equal(test(f(["fall"])), false);
     assert.equal(sh.filterTest(defs, { season: "noseason" })(f([])), true);
   });
+
+  // ── Home shelves ──
+  const films = (Array.isArray(raw) ? raw : raw.films).map((f) => ({
+    ...f, key: f.name + "|" + f.year, keywords: f.keywords || [], genres: f.genres || [], countries: f.countries || [],
+    directors: f.directors || [], dop: f.dop || [], music: f.music || [], cast: f.cast || [], tags: [], copies: [], badges: [], themes: [],
+    recentRank: 99, yearNum: f.year, special: false, seasons: S.filmSeasons({}, f.name + "|" + f.year),
+  }));
+  const shelvesOn = (iso, cfg) => sh.buildRecipes(films, [], [], undefined, cfg, new Date(iso + "T12:00:00")).filter((r) => r.id.startsWith("season:"));
+  const ids = (list) => list.map((r) => r.id.slice(7)).sort();
+  t("season windows", () => {
+    assert.equal(S.seasonActive("halloween", new Date("2026-10-15T12:00:00")), true);
+    assert.equal(S.seasonActive("halloween", new Date("2026-11-02T12:00:00")), false);
+    assert.equal(S.seasonActive("winter", new Date("2027-01-10T12:00:00")), true); // wraps over New Year
+    assert.equal(S.seasonActive("winter", new Date("2026-07-04T12:00:00")), false);
+    assert.equal(S.seasonActive("summer", new Date("2026-07-04T12:00:00")), true);
+  });
+  t("October: Halloween is pinned, Fall is dealt more often, nothing else", () => {
+    const on = shelvesOn("2026-10-15");
+    assert.deepEqual(ids(on), ["fall", "halloween"]);
+    assert.equal(on.find((r) => r.id === "season:halloween").pin, true);
+    assert.equal(on.find((r) => r.id === "season:fall").pin, false);
+  });
+  t("late November: Christmas pinned, Fall still around; early December adds Winter", () => {
+    assert.deepEqual(ids(shelvesOn("2026-11-22")), ["christmas", "fall"]);
+    assert.deepEqual(ids(shelvesOn("2026-12-05")), ["christmas", "winter"]);
+  });
+  t("July: just Summer. Removed or renamed built-ins are respected", () => {
+    assert.deepEqual(ids(shelvesOn("2026-07-04")), ["summer"]);
+    assert.equal(shelvesOn("2026-07-04")[0].pin, true); // no specific season on, so the general one is pinned
+    assert.deepEqual(ids(shelvesOn("2026-07-04", { hidden: ["summer"], names: {}, custom: [] })), []);
+    assert.equal(shelvesOn("2026-07-04", { hidden: [], names: { summer: "Beach" }, custom: [] })[0].title, "Beach watches");
+  });
+  t("pinned shelves are dealt first and always", () => {
+    const dealt = sh.dealShelves(shelvesOn("2026-10-15"), 7, 1);
+    assert.equal(dealt[0].id, "season:halloween");
+  });
+  t("season shelves stay out of the Home picker's Shelf group", () => {
+    const defs = sh.makeFilters([], [], shelvesOn("2026-10-15"), undefined, S.seasonList());
+    const shelf = defs.find((g) => g[0] === "shelf");
+    assert.equal(!!shelf && shelf[2].some((o) => String(o[0]).startsWith("season:")), false);
+  });
   console.log(`\n${n} passed`);
 } finally {
   await v.close();

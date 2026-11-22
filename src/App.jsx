@@ -799,7 +799,8 @@ function Home({ films, defs, recipes, filters, home, setHome, onOpen, onSeeAll, 
     const seed = hashStr(home.date) + home.seed * 104729;
     const pairs = recipes.find((r) => r.kind === "pairs");
     const rest = dealShelves(recipes.filter((r) => r.kind !== "pairs"), seed, deal + extra * 3);
-    return pairs ? [...dealShelves([pairs], seed, 1), ...rest] : rest;
+    const lead = rest.filter((s) => s.pin), others = rest.filter((s) => !s.pin); // in-season Halloween / Christmas go above everything
+    return pairs ? [...lead, ...dealShelves([pairs], seed, 1), ...others] : [...lead, ...others];
   }, [recipes, home.date, home.seed, extra, deal]);
   const canDealMore = shelves.filter((s) => s.kind !== "pairs").length === deal + extra * 3 && recipes.length > shelves.length;
   const labels = activeFilterLabels(defs, filters);
@@ -4624,7 +4625,7 @@ export default function App() {
   // Color shelves join Home once every poster's color is known (read in the background, once per poster).
   const colorProgress = usePosterColors(shelfFilms, true);
   const colorShelves = useMemo(() => (colorProgress ? [] : buildColorShelves(shelfFilms)), [shelfFilms, colorProgress]);
-  const recipes = useMemo(() => [...buildRecipes(shelfFilms, D.customTags, homePairs, D.feelPrefs), ...colorShelves], [shelfFilms, D.customTags, homePairs, D.feelPrefs, colorShelves]);
+  const recipes = useMemo(() => [...buildRecipes(shelfFilms, D.customTags, homePairs, D.feelPrefs, D.seasonPrefs, new Date(home.date + "T12:00:00")), ...colorShelves], [shelfFilms, D.customTags, homePairs, D.feelPrefs, D.seasonPrefs, home.date, colorShelves]);
   const [wantOpen, setWantOpen] = useState(null); // a want's id, for its sheet
   const [peek, setPeek] = useState(null); // a greyed-out filmography film
   const wanted = useMemo(() => new Set(D.want.filter((w) => !w.bought).map((w) => wantId(w).toLowerCase())), [D.want]);

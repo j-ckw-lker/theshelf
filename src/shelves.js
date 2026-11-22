@@ -3,7 +3,7 @@
 
 import { yearsSince, rng, shuffled, runtimeLabel } from "./lib.js";
 import curatedRaw from "./curated.json";
-import { seasonList, seasonOptions } from "./seasons.js";
+import { seasonList, seasonOptions, seasonActive, SPECIFIC_SEASONS } from "./seasons.js";
 
 export const TAGS = {
   comfort: "Comfort",
@@ -29,7 +29,7 @@ export const makeFilters = (customTags = [], hiddenTags = [], recipes = [], feel
     ["five", "5 stars", (f) => f.rating === 5],
   ]],
   ["shelf", "Shelf", recipes
-    .filter((r) => r.kind !== "person" && r.kind !== "pairs" && !THEME_IDS.includes(r.id) && !FEEL_IDS.includes(r.id) && !r.id.startsWith("c:") && !SHELF_DUPES.has(r.id) && !r.id.startsWith("dec") && !(r.id.startsWith("tag:") && customTags.includes(r.id.slice(4))))
+    .filter((r) => r.kind !== "person" && r.kind !== "pairs" && !THEME_IDS.includes(r.id) && !FEEL_IDS.includes(r.id) && !r.id.startsWith("c:") && !r.id.startsWith("season:") && !SHELF_DUPES.has(r.id) && !r.id.startsWith("dec") && !(r.id.startsWith("tag:") && customTags.includes(r.id.slice(4))))
     .map((r) => [r.id, r.title, r.test])],
   ["theme", "Theme", THEMES.map(([id, title]) => [id, title, (f) => f.themes.includes(id)])],
   ["feel", "Feel", feelOptions(feels)],
@@ -178,7 +178,7 @@ export const feelOptions = (list = feelList(), count = () => 1) => [
   ["unfelt", "New, no feel yet", unfelt],
 ];
 
-export function buildRecipes(films, customTags = [], pairs = [], feelCfg = NO_FEEL_CFG) {
+export function buildRecipes(films, customTags = [], pairs = [], feelCfg = NO_FEEL_CFG, seasonCfg = undefined, today = new Date()) {
   const out = [];
   const add = (r) => {
     const list = films.filter((f) => !f.tags.includes("sell") && r.test(f));
@@ -204,6 +204,14 @@ export function buildRecipes(films, customTags = [], pairs = [], feelCfg = NO_FE
   // Themes use each film's corrected theme list, so hand edits on a film page flow into Home.
   VIBES.forEach(([id, title, test]) => !(FEEL_IDS.includes(id) && (feelCfg.hidden || []).includes(id)) && add({ id, title: (FEEL_IDS.includes(id) && (feelCfg.names || {})[id]) || title, test: THEME_IDS.includes(id) || FEEL_IDS.includes(id) ? (f) => f.themes.includes(id) : test }));
   (feelCfg.custom || []).forEach((c) => add({ id: c.id, title: c.name, test: (f) => f.themes.includes(c.id) }));
+
+  // Seasons: a shelf for each built-in season while it's the right time of year (see SEASON_WINDOWS).
+  const nowSeasons = seasonList(seasonCfg).filter(([id]) => seasonActive(id, today));
+  const specific = nowSeasons.some(([id]) => SPECIFIC_SEASONS.includes(id));
+  nowSeasons.forEach(([id, name]) => {
+    const pin = SPECIFIC_SEASONS.includes(id) || !specific; // a general season is pinned too when no specific one is on
+    add({ id: "season:" + id, title: name + " watches", min: 3, pin, weight: 6, test: (f) => (f.seasons || []).includes(id) });
+  });
 
   [1960, 1970, 1980, 1990].forEach((d) =>
     add({ id: "dec" + d, title: `The ${String(d).slice(2)}s, on your shelf`, test: (f) => f.yearNum >= d && f.yearNum < d + 10 }));
@@ -270,11 +278,13 @@ export function buildRecipes(films, customTags = [], pairs = [], feelCfg = NO_FE
 // later appends without disturbing what's already on screen. People shelves: 2 in the first six, +1 per three after.
 export function dealShelves(recipes, seed, count = 6) {
   const rand = rng(seed);
+  const pinned = recipes.filter((r) => r.pin).slice(0, 2); // in-season Halloween / Christmas: always dealt, always first
   const rest = recipes
+    .filter((r) => !r.pin)
     .map((r) => ({ r, k: Math.pow(rand(), 1 / (r.weight || 1)) }))
     .sort((a, b) => b.k - a.k)
     .map((x) => x.r);
-  const picked = [];
+  const picked = [...pinned];
   let people = 0, colors = 0;
   for (const r of rest) {
     if (picked.length >= count) break;

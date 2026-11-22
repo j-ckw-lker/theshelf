@@ -30,3 +30,25 @@ export const seasonOptions = (list = seasonList(), count = () => 1) => {
     ["noseason", "No season yet", (f) => !f.seasons.some((id) => shown.has(id))],
   ];
 };
+
+// Home shelves. Each built-in season shows up when it's the right time of year ([month, day] start and end, inclusive,
+// wrapping over New Year when the start is after the end). Your own seasons have no dates, so they stay filters only.
+// Halloween and Christmas are the specific ones: while one is on, it's pinned to the top of Home and the general
+// seasons (Fall, Winter, Summer) just get a better chance of being dealt. With no specific one on, the general
+// season is pinned instead, so Summer shows up all summer.
+export const SEASON_WINDOWS = {
+  halloween: [[9, 20], [11, 1]],
+  christmas: [[11, 20], [12, 31]],
+  fall: [[9, 1], [11, 30]],
+  winter: [[12, 1], [2, 28]],
+  summer: [[5, 25], [8, 31]],
+};
+export const SPECIFIC_SEASONS = ["halloween", "christmas"];
+export const seasonActive = (id, date = new Date()) => {
+  const w = SEASON_WINDOWS[id];
+  if (!w) return false;
+  const d = new Date(date);
+  const md = (d.getMonth() + 1) * 100 + d.getDate();
+  const a = w[0][0] * 100 + w[0][1], b = w[1][0] * 100 + w[1][1];
+  return a <= b ? md >= a && md <= b : md >= a || md <= b;
+};
