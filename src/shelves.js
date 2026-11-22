@@ -2,6 +2,7 @@
 // (see deriveFilm in App.jsx): genres, countries, keywords, runtime, tags, badges…
 
 import { yearsSince, rng, shuffled, runtimeLabel } from "./lib.js";
+import curatedRaw from "./curated.json";
 
 export const TAGS = {
   comfort: "Comfort",
@@ -30,9 +31,10 @@ export const makeFilters = (customTags = [], hiddenTags = [], recipes = []) => [
     ...customTags.map((t) => ["tag:" + t, t, tagged(t)]),
   ]],
   ["shelf", "Shelf", recipes
-    .filter((r) => r.kind !== "person" && r.kind !== "pairs" && !THEME_IDS.includes(r.id) && !SHELF_DUPES.has(r.id) && !r.id.startsWith("dec") && !(r.id.startsWith("tag:") && customTags.includes(r.id.slice(4))))
+    .filter((r) => r.kind !== "person" && r.kind !== "pairs" && !THEME_IDS.includes(r.id) && !FEEL_IDS.includes(r.id) && !SHELF_DUPES.has(r.id) && !r.id.startsWith("dec") && !(r.id.startsWith("tag:") && customTags.includes(r.id.slice(4))))
     .map((r) => [r.id, r.title, r.test])],
   ["theme", "Theme", THEMES.map(([id, title]) => [id, title, (f) => f.themes.includes(id)])],
+  ["feel", "Feel", feelOptions()],
   ["people", "People", recipes
     .filter((r) => r.kind === "person")
     .sort((a, b) => b.id.startsWith("dir:") - a.id.startsWith("dir:") || b.films.length - a.films.length || a.title.localeCompare(b.title))
@@ -101,22 +103,11 @@ export const activeFilterLabels = (defs, filters) =>
 // ─── Home shelves ───────────────────────────────────────────────────────
 const yearSub = (f) => f.year;
 
-// Hand-picked: films where the talk is the main event (fast, witty, propulsive, or the conversation is the plot).
-// Not derivable from TMDB keywords, so it's a seed list. Per-film corrections still work from the film page
-// (themesAdd / themesOff), same as every other theme.
-const DIALOGUE = new Set([
-  "Pulp Fiction|1994", "Reservoir Dogs|1992", "Jackie Brown|1997", "True Romance|1993", "Inglourious Basterds|2009", "Snatch|2000",
-  "Ocean's Eleven|2001", "The Social Network|2010", "Moneyball|2011", "Scott Pilgrim vs. the World|2010", "Ferris Bueller's Day Off|1986",
-  "The Princess Bride|1987", "Clue|1985", "Midnight Run|1988", "The Nice Guys|2016", "Burn After Reading|2008", "Charade|1963",
-  "Fear and Loathing in Las Vegas|1998", "Wayne's World|1992", "Before Sunrise|1995", "Before Sunset|2004", "Before Midnight|2013",
-  "12 Angry Men|1957", "When Harry Met Sally...|1989", "Good Will Hunting|1997", "Network|1976", "All the President's Men|1976",
-  "Anatomy of a Fall|2023", "Anatomy of a Murder|1959", "Glengarry Glen Ross|1992", "Broadcast News|1987", "Talk Radio|1988",
-  "The Big Lebowski|1998", "Fargo|1996", "Miller's Crossing|1990", "The Grand Budapest Hotel|2014", "Fantastic Mr. Fox|2009",
-  "Dr. Strangelove or: How I Learned to Stop Worrying and Love the Bomb|1964", "GoodFellas|1990", "Casino|1995",
-  "The Wolf of Wall Street|2013", "The Departed|2006", "Heat|1995", "Training Day|2001", "Uncut Gems|2019", "Marty Supreme|2025",
-  "Out of Sight|1998", "Airplane!|1980", "Step Brothers|2008", "Friday|1995", "This Is Spinal Tap|1984", "Best in Show|2000",
-  "Dazed and Confused|1993", "Zoolander|2001", "The Apartment|1960", "Sunset Boulevard|1950", "Sabrina|1954", "Moonstruck|1987",
-]);
+// Feel: hand-picked lists (src/curated.json) of how a film hits. TMDB keywords can't see this, so a person picks.
+// They're stored as themes, so the per-film add/remove on the film page works the same as for keyword themes.
+const curated = Object.fromEntries(Object.entries(curatedRaw).map(([k, v]) => [k, new Set(v)]));
+const inList = (id) => (f) => curated[id].has(f.key);
+export const FEEL_SEEDED = "2026-11-21"; // films that arrive after this and carry no feel show up under "New, no feel yet"
 
 const VIBES = [
   ["asia", "Japan, Hong Kong & Korea", fromCountry("JP", "HK", "KR")],
@@ -134,7 +125,6 @@ const VIBES = [
   ["la", "Los Angeles after dark", hasKw("los angeles, california")],
   ["gangsters", "Gangsters", hasKw("gangster", "mafia")],
   ["satire", "Satire", hasKw("satire")],
-  ["dialogue", "Dialogue-driven", (f) => DIALOGUE.has(f.key)],
   ["timetravel", "Time travel", hasKw("time travel")],
   ["vampires", "Vampires", hasKw("vampire")],
   ["horror", "Lights off: horror", hasGenre("Horror")],
@@ -143,11 +133,27 @@ const VIBES = [
   ["war", "War films", hasGenre("War")],
   ["animation", "Animated", hasGenre("Animation")],
   ["five", "Five stars, no notes", (f) => f.rating === 5],
+  ["dialogue", "Dialogue-driven", inList("dialogue")],
+  ["adrenaline", "Adrenaline", inList("adrenaline")],
+  ["sensory", "Sensory overload", inList("sensory")],
+  ["mind", "Mind-bending", inList("mind")],
+  ["trippy", "Hallucinatory", inList("trippy")],
+  ["dread", "Dread", inList("dread")],
 ];
 
 // Keyword themes, reused as a Theme filter in the Library (the genre/country/rating vibes are filters already).
-const THEME_IDS = ["yakuza", "heist", "hitmen", "paranoia", "killers", "spies", "dystopia", "revenge", "martial", "bw", "nyc", "la", "gangsters", "satire", "dialogue", "timetravel", "vampires"];
+const THEME_IDS = ["yakuza", "heist", "hitmen", "paranoia", "killers", "spies", "dystopia", "revenge", "martial", "bw", "nyc", "la", "gangsters", "satire", "timetravel", "vampires"];
 export const THEMES = VIBES.filter((v) => THEME_IDS.includes(v[0]));
+const FEEL_IDS = ["dialogue", "adrenaline", "sensory", "mind", "trippy", "dread"];
+export const FEELS = VIBES.filter((v) => FEEL_IDS.includes(v[0]));
+export const ALL_THEMES = [...THEMES, ...FEELS]; // what a film's `themes` can hold
+const hasFeel = (f) => FEEL_IDS.some((id) => f.themes.includes(id));
+// Films added after the lists were seeded, with no feel yet: the to-do list for tagging new purchases.
+export const unfelt = (f) => !hasFeel(f) && typeof f.addedKey === "string" && f.addedKey > FEEL_SEEDED;
+export const feelOptions = (count = () => 1) => [
+  ...FEELS.map(([id, title]) => [id, title, (f) => f.themes.includes(id)]).filter((o) => count(o[2]) > 0),
+  ["unfelt", "New, no feel yet", unfelt],
+];
 
 export function buildRecipes(films, customTags = [], pairs = []) {
   const out = [];
@@ -173,7 +179,7 @@ export function buildRecipes(films, customTags = [], pairs = []) {
   });
 
   // Themes use each film's corrected theme list, so hand edits on a film page flow into Home.
-  VIBES.forEach(([id, title, test]) => add({ id, title, test: THEME_IDS.includes(id) ? (f) => f.themes.includes(id) : test }));
+  VIBES.forEach(([id, title, test]) => add({ id, title, test: THEME_IDS.includes(id) || FEEL_IDS.includes(id) ? (f) => f.themes.includes(id) : test }));
 
   [1960, 1970, 1980, 1990].forEach((d) =>
     add({ id: "dec" + d, title: `The ${String(d).slice(2)}s, on your shelf`, test: (f) => f.yearNum >= d && f.yearNum < d + 10 }));

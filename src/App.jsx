@@ -9,7 +9,7 @@ import {
   sortKey, letterOf, peopleLabel, hashStr, rng, shuffled, yearsSince, parseEdition, copyBadges, copyLine, money,
   FORMATS, PACKAGES, pkgsOf, REGIONS, KNOWN_LABELS, canonicalLabel, newId, isDigital, CODE_QUALITIES,
 } from "./lib.js";
-import { TAGS, THEMES, makeFilters, filterTest, activeFilterLabels, buildRecipes, dealShelves } from "./shelves.js";
+import { TAGS, THEMES, ALL_THEMES, FEELS, feelOptions, makeFilters, filterTest, activeFilterLabels, buildRecipes, dealShelves } from "./shelves.js";
 import { pairIndex, bestPairs, partnersFor, scorePair, nightPlan, reasonLine } from "./pairs.js";
 import { streamingPartners, peekStreaming, streamLine, loadProviders } from "./streaming.js";
 import { flushSync, createPortal } from "react-dom";
@@ -350,7 +350,7 @@ function deriveFilm(raw, userData, watchLog, hiddenTags = []) {
   // Themes come from TMDB keywords, corrected by hand per film (themesAdd / themesOff).
   const plus = u.themesAdd || [], minus = u.themesOff || [];
   out.themesAdd = plus; out.themesOff = minus;
-  out.themes = THEMES.filter(([id, , t]) => plus.includes(id) || (!minus.includes(id) && t(out))).map((x) => x[0]);
+  out.themes = ALL_THEMES.filter(([id, , t]) => plus.includes(id) || (!minus.includes(id) && t(out))).map((x) => x[0]);
   return out;
 }
 
@@ -919,7 +919,7 @@ const byCount = (lists) => {
 };
 const GENRE_NAMES = { "Science Fiction": "Sci-fi" };
 // Groups that get long show their biggest few, with an "All N" to open the rest.
-const GROUP_CAP = { label: 10, genre: 12, theme: 10, country: 8, director: 10 };
+const GROUP_CAP = { label: 10, genre: 12, theme: 10, feel: 12, country: 8, director: 10 };
 let regionNames = null;
 const countryName = (code) => {
   if (code === "US") return "US";
@@ -949,6 +949,7 @@ const libGroups = (films, customTags, hiddenTags = []) => {
     ["decade", "Decade", decades.map((d) => [String(d), d + "s", (f) => f.yearNum >= d && f.yearNum < d + 10])],
     ["genre", "Genre", genres.map((g) => [g, GENRE_NAMES[g] || g, (f) => f.genres.includes(g)])],
     ["theme", "Theme", THEMES.map(([k, l]) => [k, l, (f) => f.themes.includes(k), films.filter((f) => f.themes.includes(k)).length]).filter((o) => o[3] > 0).sort((a, b) => b[3] - a[3]).map(([k, l, t]) => [k, l, t])],
+    ["feel", "Feel", feelOptions((t) => films.some(t))],
     ["country", "Country & language", [
       ...countries.map((c) => [c, countryName(c), (f) => f.countries.includes(c)]),
       ["foreign", "Not in English", (f) => f.lang && f.lang !== "en"],
@@ -2482,7 +2483,7 @@ function FilmPage({ nav = "in", below = false, onPeek, wanted, deckItem, deckDay
               <button className="link" style={{ fontSize: 14 }} onClick={() => setEditThemes(!editThemes)}>{editThemes ? "Done" : film.themes.length ? "Edit themes" : "Add themes"}</button>
             </div>
             <div className="tag-row">
-              {(editThemes ? THEMES : THEMES.filter(([id]) => film.themes.includes(id))).map(([id, label]) => {
+              {(editThemes ? ALL_THEMES : ALL_THEMES.filter(([id]) => film.themes.includes(id))).map(([id, label]) => {
                 const on = film.themes.includes(id);
                 return editThemes
                   ? <button key={id} className={"chip" + (on ? " on" : "")} aria-pressed={on} onClick={() => toggleTheme(id)}>{label}</button>
