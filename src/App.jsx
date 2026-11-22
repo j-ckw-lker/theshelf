@@ -978,7 +978,6 @@ const libGroups = (films, customTags, hiddenTags = [], feels = feelList()) => {
     ]],
     ["package", "Packaging", pkgs.map((x) => [x, x, has((c) => pkgsOf(c).includes(x))])],
     ["label", "Distributor", labels.map((x) => [x, x, has((c) => c.label === x)])],
-    ["tag", "Tags", [...Object.entries(TAGS).filter(([k]) => !hiddenTags.includes(k)), ...customTags.map((t) => [t, t])].map(([k, l]) => [k, l, (f) => f.tags.includes(k)])],
     ["decade", "Decade", decades.map((d) => [String(d), d + "s", (f) => f.yearNum >= d && f.yearNum < d + 10])],
     ["genre", "Genre", genres.map((g) => [g, GENRE_NAMES[g] || g, (f) => f.genres.includes(g)])],
     ["theme", "Theme", THEMES.map(([k, l]) => [k, l, (f) => f.themes.includes(k), films.filter((f) => f.themes.includes(k)).length]).filter((o) => o[3] > 0).sort((a, b) => b[3] - a[3]).map(([k, l, t]) => [k, l, t])],
@@ -993,6 +992,7 @@ const libGroups = (films, customTags, hiddenTags = [], feels = feelList()) => {
       ["special", "Special editions", (f) => f.special],
       ["multi", "More than one copy", (f) => f.copies.length > 1],
       ["added", "Added in the app", (f) => !!f.userAdded],
+      ...(hiddenTags.includes("sell") ? [] : [["sell", "Marked to sell", (f) => f.tags.includes("sell")]]),
     ]],
     ["watch", "Watching", [
       ["five", "5 stars", (f) => f.rating === 5],
@@ -1182,7 +1182,7 @@ function Library({ films: allFilms, customTags, feels, extra, setExtra, onOpen, 
   const [hideSell] = usePref("shelf-hide-sell", false);
   const [sel, setSel] = useState({});
   const wantsDigital = (sel.format || []).some((k) => k === "digitalonly" || k === "hasdigital" || /^Digital/.test(k));
-  const wantsSell = (sel.tag || []).includes("sell");
+  const wantsSell = (sel.shelf || []).includes("sell");
   const films = useMemo(() => allFilms.filter((f) => (countDigital || wantsDigital || !f.digitalOnly) && (!hideSell || wantsSell || !f.tags.includes("sell"))),
     [allFilms, countDigital, wantsDigital, hideSell, wantsSell]);
   const [hiddenTagsPref] = usePref("shelf-hidden-tags", "");
@@ -1410,7 +1410,6 @@ function LibraryFilter({ films, groups, sel, active, onToggle, onReset, onClose 
               })}
               {opts.length > visible.length && <button className="chip fchip more" onClick={() => setMore((m) => ({ ...m, [g]: true }))}>All {opts.length}</button>}
             </div>
-            {g === "tag" && opts.length <= Object.keys(TAGS).length && <p className="muted fnote">Make your own tags from any film's page.</p>}
           </section>
         );
       })}
