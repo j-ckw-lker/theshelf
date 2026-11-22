@@ -29,7 +29,7 @@ export const makeFilters = (customTags = [], hiddenTags = [], recipes = [], feel
     ["five", "5 stars", (f) => f.rating === 5],
   ]],
   ["shelf", "Shelf", recipes
-    .filter((r) => r.kind !== "person" && r.kind !== "pairs" && !THEME_IDS.includes(r.id) && !FEEL_IDS.includes(r.id) && !r.id.startsWith("c:") && !r.id.startsWith("season:") && !SHELF_DUPES.has(r.id) && !r.id.startsWith("dec") && !(r.id.startsWith("tag:") && customTags.includes(r.id.slice(4))))
+    .filter((r) => r.kind !== "person" && !THEME_IDS.includes(r.id) && !FEEL_IDS.includes(r.id) && !r.id.startsWith("c:") && !r.id.startsWith("season:") && !SHELF_DUPES.has(r.id) && !r.id.startsWith("dec") && !(r.id.startsWith("tag:") && customTags.includes(r.id.slice(4))))
     .map((r) => [r.id, r.title, r.test])],
   ["theme", "Theme", THEMES.map(([id, title]) => [id, title, (f) => f.themes.includes(id)])],
   ["feel", "Feel", feelOptions(feels)],
@@ -178,7 +178,7 @@ export const feelOptions = (list = feelList(), count = () => 1) => [
   ["unfelt", "New, no feel yet", unfelt],
 ];
 
-export function buildRecipes(films, customTags = [], pairs = [], feelCfg = NO_FEEL_CFG, seasonCfg = undefined, today = new Date()) {
+export function buildRecipes(films, customTags = [], feelCfg = NO_FEEL_CFG, seasonCfg = undefined, today = new Date()) {
   const out = [];
   const add = (r) => {
     const list = films.filter((f) => !f.tags.includes("sell") && r.test(f));
@@ -260,12 +260,6 @@ export function buildRecipes(films, customTags = [], pairs = [], feelCfg = NO_FE
     test: (f) => f.directors.some((d) => fiveDirs.has(d)) && (!f.lastWatched || yearsSince(f.lastWatched) > 2),
     sub: (f) => f.directors[0],
   });
-  // Double features come from pairs.js (scored on themes, crew, cast, era), passed in by the app.
-  if (pairs.length >= 6) {
-    const inPair = new Set(pairs.flatMap((p) => [p.a.key, p.b.key]));
-    out.push({ id: "pairs", kind: "pairs", title: "Double features", weight: 3, films: pairs, test: (f) => inPair.has(f.key), count: pairs.length });
-  }
-
   // Seasonal shelves jump the queue in their month.
   const month = new Date().getMonth();
   if (month === 9) add({ id: "halloween", title: "Halloween season", weight: 10, test: (f) => f.genres.includes("Horror") || f.keywords.includes("halloween") });
@@ -294,15 +288,7 @@ export function dealShelves(recipes, seed, count = 6) {
     picked.push(r);
   }
   return picked.slice(0, count).map((r) => {
-    if (r.kind !== "pairs") {
-      const deal = shuffled(r.films, rand).slice(0, 15);
-      return { ...r, deal: r.order ? deal.sort(r.order) : deal }; // color shelves lay out as a gradient
-    }
-    const used = new Set();
-    const deal = shuffled(r.films, rand).filter((p) => {
-      if (used.has(p.a.key) || used.has(p.b.key)) return false;
-      used.add(p.a.key); used.add(p.b.key); return true;
-    }).slice(0, 10);
-    return { ...r, deal };
+    const deal = shuffled(r.films, rand).slice(0, 15);
+    return { ...r, deal: r.order ? deal.sort(r.order) : deal }; // color shelves lay out as a gradient
   });
 }

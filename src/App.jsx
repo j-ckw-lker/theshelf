@@ -786,7 +786,7 @@ function usePullToRefresh(onRefresh, enabled) {
   return { pull, refreshing, dragging: pull > 0 && !refreshing };
 }
 
-function Home({ films, defs, recipes, filters, home, setHome, onOpen, onSeeAll, onSearch, onFilters, onPair, onDoubles, saved = 0, active, deck = [], deckDays = 7, onDeckPin, onDeckRemove, onDeckPick, onDeckAll }) {
+function Home({ films, defs, recipes, filters, home, setHome, onOpen, onSeeAll, onSearch, onFilters, active, deck = [], deckDays = 7, onDeckPin, onDeckRemove, onDeckPick, onDeckAll }) {
   const eligible = useMemo(() => films.filter(filterTest(defs, filters)), [films, defs, filters]);
   // A film pinned for tonight from On deck takes the hero; otherwise it's the day's pick.
   const tonight = deck.find((x) => x.tonight);
@@ -794,15 +794,11 @@ function Home({ films, defs, recipes, filters, home, setHome, onOpen, onSeeAll, 
   const pick = tonight ? tonight.f : daily;
   const extra = home.more || 0;
   const [deal] = usePref("shelf-deal-count", 6);
-  // Double features are a fixture now (they used to have a tab): always the first shelf.
   const shelves = useMemo(() => {
     const seed = hashStr(home.date) + home.seed * 104729;
-    const pairs = recipes.find((r) => r.kind === "pairs");
-    const rest = dealShelves(recipes.filter((r) => r.kind !== "pairs"), seed, deal + extra * 3);
-    const lead = rest.filter((s) => s.pin), others = rest.filter((s) => !s.pin); // in-season Halloween / Christmas go above everything
-    return pairs ? [...lead, ...dealShelves([pairs], seed, 1), ...others] : [...lead, ...others];
+    return dealShelves(recipes, seed, deal + extra * 3); // in-season Halloween / Christmas come out first
   }, [recipes, home.date, home.seed, extra, deal]);
-  const canDealMore = shelves.filter((s) => s.kind !== "pairs").length === deal + extra * 3 && recipes.length > shelves.length;
+  const canDealMore = shelves.length === deal + extra * 3 && recipes.length > shelves.length;
   const labels = activeFilterLabels(defs, filters);
   const filterLabel = labels.length === 0 ? "Filters" : labels.length === 1 ? labels[0] : labels[0] + " +" + (labels.length - 1);
   const [logoFailed, setLogoFailed] = useState(false);
@@ -893,25 +889,12 @@ function Home({ films, defs, recipes, filters, home, setHome, onOpen, onSeeAll, 
             <div className="shelf-head">
               <div>
                 <h2>{s.title}</h2>
-                <p>{s.kind === "pairs" ? "Two films, one night" : `${s.films.length} ${s.kind === "person" ? "on your shelf" : "films"}`}</p>
+                <p>{`${s.films.length} ${s.kind === "person" ? "on your shelf" : "films"}`}</p>
               </div>
               <span className="shelf-links">
-                {s.kind === "pairs" && saved > 0 && <button className="link" onClick={() => onDoubles("saved")}>Saved {saved}</button>}
-                <button className="link" onClick={(e) => (s.kind === "pairs" ? onDoubles("feed") : onSeeAll(s, e.currentTarget))}>See all</button>
+                <button className="link" onClick={(e) => onSeeAll(s, e.currentTarget)}>See all</button>
               </span>
             </div>
-            {s.kind === "pairs" ? (
-              <div className="shelf-row">
-                {s.deal.map((p) => (
-                  <button key={p.key} className="pair" onClick={() => onPair(p)} aria-label={`${p.a.name} and ${p.b.name}`}>
-                    <div className="pair-posters">
-                      {[p.a, p.b].map((f) => <Poster key={f.key} path={f.posterPath} title={f.name} size="w185" />)}
-                    </div>
-                    <span className="pair-why">{reasonLine(p, 1)}</span>
-                  </button>
-                ))}
-              </div>
-            ) : (
               <div className="shelf-row">
                 {s.deal.map((f) => (
                   <button key={f.key} data-key={f.key} className="shelf-item" onPointerDown={() => preloadFilm(f)} onClick={(e) => onOpen(f, e)}>
@@ -920,7 +903,6 @@ function Home({ films, defs, recipes, filters, home, setHome, onOpen, onSeeAll, 
                   </button>
                 ))}
               </div>
-            )}
           </section>
         ))}
         {canDealMore && (
@@ -2360,7 +2342,7 @@ function TagsView({ films, D }) {
   );
 }
 
-// Double features, pushed onto the stack from Home or a film page instead of living in a tab.
+// Double features, pushed onto the stack from You or a film page instead of living in a tab.
 function DoublesPage({ nav = "in", below = false, entry, films, ix, programs, onNight, finish, backLabel, onBack }) {
   const ref = useRef(null);
   const [mountedBelow] = useState(below);
@@ -4621,11 +4603,10 @@ export default function App() {
   const [hideSell] = usePref("shelf-hide-sell", false);
   const shelfFilms = useMemo(() => films.filter((f) => (countDigital || !f.digitalOnly) && (!hideSell || !f.tags.includes("sell"))), [films, countDigital, hideSell]);
   const ix = useMemo(() => pairIndex(films), [films]);
-  const homePairs = useMemo(() => bestPairs(ix, 60), [ix]);
-  // Color shelves join Home once every poster's color is known (read in the background, once per poster).
+    // Color shelves join Home once every poster's color is known (read in the background, once per poster).
   const colorProgress = usePosterColors(shelfFilms, true);
   const colorShelves = useMemo(() => (colorProgress ? [] : buildColorShelves(shelfFilms)), [shelfFilms, colorProgress]);
-  const recipes = useMemo(() => [...buildRecipes(shelfFilms, D.customTags, homePairs, D.feelPrefs, D.seasonPrefs, new Date(home.date + "T12:00:00")), ...colorShelves], [shelfFilms, D.customTags, homePairs, D.feelPrefs, D.seasonPrefs, home.date, colorShelves]);
+  const recipes = useMemo(() => [...buildRecipes(shelfFilms, D.customTags, D.feelPrefs, D.seasonPrefs, new Date(home.date + "T12:00:00")), ...colorShelves], [shelfFilms, D.customTags, D.feelPrefs, D.seasonPrefs, home.date, colorShelves]);
   const [wantOpen, setWantOpen] = useState(null); // a want's id, for its sheet
   const [peek, setPeek] = useState(null); // a greyed-out filmography film
   const wanted = useMemo(() => new Set(D.want.filter((w) => !w.bought).map((w) => wantId(w).toLowerCase())), [D.want]);
@@ -4803,7 +4784,6 @@ export default function App() {
   const onSeeAllE = useEvent((s) => pushList({ kind: "shelf", label: s.title, test: s.test, sort: s.listSort }));
   const onSearchE = useEvent(() => { toLibrary(null); setSearchFocus((n) => n + 1); });
   const onFiltersE = useEvent((x) => (x === "reset" ? setFilters({}) : setShowFilters(true)));
-  const onDoublesE = useEvent((view = "feed") => pushList({ kind: "doubles", label: "Double features", view }));
   const onOpenWantE = useEvent((w) => setWantOpen(wantId(w)));
   const onNewWantE = useEvent(() => setWantOpen("new"));
   const onAddE = useEvent(() => setAdding({}));
@@ -4823,7 +4803,7 @@ export default function App() {
       <div className={"under" + (covered ? " covered" : "")}>
       <main hidden={tab !== "home"}>
         <HomeTab films={shelfFilms} defs={defs} recipes={recipes} filters={filters} home={home} setHome={setHome} active={tab === "home"}
-          onOpen={openFilmE} onSeeAll={onSeeAllE} onSearch={onSearchE} onFilters={onFiltersE} onPair={setNight} onDoubles={onDoublesE} saved={D.programs.length}
+          onOpen={openFilmE} onSeeAll={onSeeAllE} onSearch={onSearchE} onFilters={onFiltersE}
           deck={deck} deckDays={deckDays} onDeckPin={onDeckPinE} onDeckRemove={onDeckRemoveE} onDeckPick={onDeckPickE} onDeckAll={onDeckAllE} />
       </main>
       {/* Tabs stay built in the background, so switching back is instant and keeps your place. */}

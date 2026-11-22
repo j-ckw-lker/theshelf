@@ -66,7 +66,7 @@ try {
     directors: f.directors || [], dop: f.dop || [], music: f.music || [], cast: f.cast || [], tags: [], copies: [], badges: [], themes: [],
     recentRank: 99, yearNum: f.year, special: false, seasons: S.filmSeasons({}, f.name + "|" + f.year),
   }));
-  const shelvesOn = (iso, cfg) => sh.buildRecipes(films, [], [], undefined, cfg, new Date(iso + "T12:00:00")).filter((r) => r.id.startsWith("season:"));
+  const shelvesOn = (iso, cfg) => sh.buildRecipes(films, [], undefined, cfg, new Date(iso + "T12:00:00")).filter((r) => r.id.startsWith("season:"));
   const ids = (list) => list.map((r) => r.id.slice(7)).sort();
   t("season windows", () => {
     assert.equal(S.seasonActive("halloween", new Date("2026-10-15T12:00:00")), true);
@@ -94,6 +94,10 @@ try {
   t("pinned shelves are dealt first and always", () => {
     const dealt = sh.dealShelves(shelvesOn("2026-10-15"), 7, 1);
     assert.equal(dealt[0].id, "season:halloween");
+  });
+  t("no Double features shelf is built", () => {
+    const all = sh.buildRecipes(films, [], undefined, undefined, new Date("2026-10-15T12:00:00"));
+    assert.equal(all.some((r) => r.kind === "pairs" || r.id === "pairs"), false);
   });
   t("season shelves stay out of the Home picker's Shelf group", () => {
     const defs = sh.makeFilters([], [], shelvesOn("2026-10-15"), undefined, S.seasonList());
