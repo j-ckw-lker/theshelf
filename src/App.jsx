@@ -9,7 +9,7 @@ import {
   sortKey, letterOf, peopleLabel, hashStr, rng, shuffled, yearsSince, parseEdition, copyBadges, copyLine, money,
   FORMATS, PACKAGES, pkgsOf, REGIONS, KNOWN_LABELS, canonicalLabel, newId, isDigital, CODE_QUALITIES,
 } from "./lib.js";
-import { TAGS, THEMES, ALL_THEMES, FEELS, feelOptions, makeFilters, filterTest, activeFilterLabels, buildRecipes, dealShelves } from "./shelves.js";
+import { TAGS, THEMES, ALL_THEMES, FEELS, feelList, feelOptions, NO_FEEL_CFG, makeFilters, filterTest, activeFilterLabels, buildRecipes, dealShelves } from "./shelves.js";
 import { pairIndex, bestPairs, partnersFor, scorePair, nightPlan, reasonLine } from "./pairs.js";
 import { streamingPartners, peekStreaming, streamLine, loadProviders } from "./streaming.js";
 import { flushSync, createPortal } from "react-dom";
@@ -90,13 +90,36 @@ function useData() {
   const [watchLog, setWatchLog] = useStored("shelf-watchlog", {});
   const [customTags, setCustomTags] = useStored("shelf-customtags", []);
   const [programs, setPrograms] = useStored("shelf-programs", []);
+  const [feelPrefs, setFeelPrefs] = useStored("shelf-feels", NO_FEEL_CFG); // { custom: [{id, name}], names: {id: name}, hidden: [id] }
   const [labels, setLabels] = useStored("shelf-labels", []); // labels you've typed, offered as chips from then on
   // On deck: a short running pool of films you might watch this week. { key, added, tonight? }
   const [deck, setDeck] = useStored("shelf-deck", []);
   const retag = (fn) => setUserData((d) => Object.fromEntries(Object.entries(d).map(([k, u]) => [k, u.tags ? { ...u, tags: fn(u.tags) } : u])));
   return {
-    userData, added, want, watchLog, customTags, programs, labels, deck,
+    userData, added, want, watchLog, customTags, programs, labels, deck, feelPrefs,
     setDeck,
+    // Feel: built-ins can be renamed or removed (films keep them quietly); your own live under "c:" ids on films' themesAdd.
+    addFeel: (name) => {
+      const lower = name.toLowerCase();
+      const have = [...feelList(feelPrefs), ...FEELS.map((f) => [f[0], f[1]])].find((x) => x[1].toLowerCase() === lower);
+      if (have) return have[0];
+      const id = "c:" + newId();
+      setFeelPrefs((p) => ({ ...NO_FEEL_CFG, ...p, custom: [...(p.custom || []), { id, name }] }));
+      return id;
+    },
+    renameFeel: (id, name) => setFeelPrefs((p) => {
+      const base = FEELS.find((f) => f[0] === id);
+      if (!base) return { ...NO_FEEL_CFG, ...p, custom: (p.custom || []).map((c) => (c.id === id ? { ...c, name } : c)) };
+      const names = { ...(p.names || {}) };
+      if (name === base[1]) delete names[id]; else names[id] = name;
+      return { ...NO_FEEL_CFG, ...p, names };
+    }),
+    hideFeel: (id) => setFeelPrefs((p) => ({ ...NO_FEEL_CFG, ...p, hidden: [...new Set([...(p.hidden || []), id])] })),
+    restoreFeel: (id) => setFeelPrefs((p) => ({ ...NO_FEEL_CFG, ...p, hidden: (p.hidden || []).filter((x) => x !== id) })),
+    removeFeel: (id) => {
+      setFeelPrefs((p) => ({ ...NO_FEEL_CFG, ...p, custom: (p.custom || []).filter((c) => c.id !== id) }));
+      setUserData((d) => Object.fromEntries(Object.entries(d).map(([k, u]) => [k, (u.themesAdd || u.themesOff) ? { ...u, themesAdd: (u.themesAdd || []).filter((x) => x !== id), themesOff: (u.themesOff || []).filter((x) => x !== id) } : u])));
+    },
     toggleDeck: (k) => setDeck((d) => (d.some((x) => x.key === k) ? d.filter((x) => x.key !== k) : [...d, { key: k, added: todayISO() }])),
     removeDeck: (k) => setDeck((d) => d.filter((x) => x.key !== k)),
     keepDeck: (k) => setDeck((d) => d.map((x) => (x.key === k ? { ...x, added: todayISO() } : x))),
@@ -164,8 +187,9 @@ function useData() {
       if (p.programs) setPrograms(p.programs);
       if (p.labels) setLabels(p.labels);
       if (p.deck) setDeck(p.deck);
+      if (p.feelPrefs) setFeelPrefs({ ...NO_FEEL_CFG, ...p.feelPrefs });
     },
-    exportPayload: () => ({ userData, added, want, watchLog, customTags, programs, labels, deck }),
+    exportPayload: () => ({ userData, added, want, watchLog, customTags, programs, labels, deck, feelPrefs }),
   };
 }
 
@@ -173,9 +197,10 @@ function useData() {
 // Keeps a copy of everything personal on the server (api/sync.js), locked with a passphrase:
 // saves a moment after each change, checks for newer copies when the app opens or comes back,
 // and merges when two devices both changed things. A new install just enters the passphrase.
-const SYNC_FIELDS = ["userData", "added", "want", "watchLog", "customTags", "programs", "labels", "deck"];
+const SYNC_FIELDS = ["userData", "added", "want", "watchLog", "customTags", "programs", "labels", "deck", "feelPrefs"];
 const hasPersonal = (d) => !!(Object.keys(d.userData || {}).length || (d.added || []).length || Object.keys(d.watchLog || {}).length
-  || (d.customTags || []).length || (d.programs || []).length || (d.labels || []).length);
+  || (d.customTags || []).length || (d.programs || []).length || (d.labels || []).length
+  || (d.feelPrefs?.custom || []).length || Object.keys(d.feelPrefs?.names || {}).length || (d.feelPrefs?.hidden || []).length);
 const unionBy = (a = [], b = [], key) => { const m = new Map(); a.forEach((x) => m.set(key(x), x)); b.forEach((x) => m.set(key(x), x)); return [...m.values()]; };
 // Combine two copies; where both have the same thing, the second (this device) wins.
 function mergeDocs(server = {}, local = {}) {
@@ -193,6 +218,11 @@ function mergeDocs(server = {}, local = {}) {
     want: unionBy(server.want, local.want, (w) => w.film + "|" + w.year),
     labels: [...new Set([...(server.labels || []), ...(local.labels || [])])],
     deck: unionBy(server.deck, local.deck, (d) => d.key),
+    feelPrefs: {
+      custom: unionBy(server.feelPrefs?.custom, local.feelPrefs?.custom, (c) => c.id),
+      names: { ...(server.feelPrefs?.names || {}), ...(local.feelPrefs?.names || {}) },
+      hidden: local.feelPrefs?.hidden || server.feelPrefs?.hidden || [], // this device's choice wins, so restoring sticks
+    },
   };
 }
 
@@ -298,7 +328,7 @@ function useSync(D) {
   return { on: !!pass, status, connect, choose, disconnect, syncNow: () => (jsonRef.current !== meta.current.synced ? push() : pull()) };
 }
 
-function deriveFilm(raw, userData, watchLog, hiddenTags = []) {
+function deriveFilm(raw, userData, watchLog, hiddenTags = [], customFeels = []) {
   const key = fkey(raw);
   const u = userData[key] || {};
   const f = u.match ? { ...raw, ...u.match } : raw; // "Fix the match" swaps in another film's TMDB data
@@ -350,7 +380,7 @@ function deriveFilm(raw, userData, watchLog, hiddenTags = []) {
   // Themes come from TMDB keywords, corrected by hand per film (themesAdd / themesOff).
   const plus = u.themesAdd || [], minus = u.themesOff || [];
   out.themesAdd = plus; out.themesOff = minus;
-  out.themes = ALL_THEMES.filter(([id, , t]) => plus.includes(id) || (!minus.includes(id) && t(out))).map((x) => x[0]);
+  out.themes = [...ALL_THEMES, ...customFeels.map((c) => [c.id, c.name, () => false])].filter(([id, , t]) => plus.includes(id) || (!minus.includes(id) && t(out))).map((x) => x[0]);
   return out;
 }
 
@@ -926,7 +956,7 @@ const countryName = (code) => {
   if (code === "GB") return "UK";
   try { regionNames ||= new Intl.DisplayNames(["en"], { type: "region" }); return regionNames.of(code) || code; } catch { return code; }
 };
-const libGroups = (films, customTags, hiddenTags = []) => {
+const libGroups = (films, customTags, hiddenTags = [], feels = feelList()) => {
   const has = (fn) => (f) => f.copies.some(fn);
   const formats = FORMATS.filter((x) => films.some(has((c) => c.format === x)));
   const pkgs = PACKAGES.filter((x) => x !== "Standard" && films.some(has((c) => pkgsOf(c).includes(x))));
@@ -949,7 +979,7 @@ const libGroups = (films, customTags, hiddenTags = []) => {
     ["decade", "Decade", decades.map((d) => [String(d), d + "s", (f) => f.yearNum >= d && f.yearNum < d + 10])],
     ["genre", "Genre", genres.map((g) => [g, GENRE_NAMES[g] || g, (f) => f.genres.includes(g)])],
     ["theme", "Theme", THEMES.map(([k, l]) => [k, l, (f) => f.themes.includes(k), films.filter((f) => f.themes.includes(k)).length]).filter((o) => o[3] > 0).sort((a, b) => b[3] - a[3]).map(([k, l, t]) => [k, l, t])],
-    ["feel", "Feel", feelOptions((t) => films.some(t))],
+    ["feel", "Feel", feelOptions(feels, (t) => films.some(t))],
     ["country", "Country & language", [
       ...countries.map((c) => [c, countryName(c), (f) => f.countries.includes(c)]),
       ["foreign", "Not in English", (f) => f.lang && f.lang !== "en"],
@@ -1142,7 +1172,7 @@ const SORTS = {
 };
 const isColorSort = (k) => k === "color" || k === "colorcool";
 
-function Library({ films: allFilms, customTags, extra, setExtra, onOpen, onAdd, searchFocus, onFocused, reset }) {
+function Library({ films: allFilms, customTags, feels, extra, setExtra, onOpen, onAdd, searchFocus, onFocused, reset }) {
   // Preferences: digital-only films and films tagged Sell can stay out of the Library unless you go looking.
   const [countDigital] = usePref("shelf-count-digital", false);
   const [hideSell] = usePref("shelf-hide-sell", false);
@@ -1152,7 +1182,7 @@ function Library({ films: allFilms, customTags, extra, setExtra, onOpen, onAdd, 
   const films = useMemo(() => allFilms.filter((f) => (countDigital || wantsDigital || !f.digitalOnly) && (!hideSell || wantsSell || !f.tags.includes("sell"))),
     [allFilms, countDigital, wantsDigital, hideSell, wantsSell]);
   const [hiddenTagsPref] = usePref("shelf-hidden-tags", "");
-  const groups = useMemo(() => libGroups(allFilms, customTags, hiddenTagsPref.split(",").filter(Boolean)), [allFilms, customTags, hiddenTagsPref]);
+  const groups = useMemo(() => libGroups(allFilms, customTags, hiddenTagsPref.split(",").filter(Boolean), feels), [allFilms, customTags, hiddenTagsPref, feels]);
   const active = useMemo(() => activeOpts(groups, sel), [groups, sel]);
   const nActive = active.reduce((n, g) => n + g[2].length, 0);
   const toggle = (g, k) => setSel((s) => {
@@ -1743,6 +1773,7 @@ function You({ films, want, programs, sync, onOpen, onPush }) {
         <div className="section-label caps" style={{ padding: "0 4px 8px" }}>Settings</div>
         <div className="you-group">
           <YouRow plain icon={I.sliders} label="Preferences" onClick={() => onPush({ kind: "prefs", label: "Preferences" })} />
+          <YouRow plain icon={I.sliders} label="Feels" onClick={() => onPush({ kind: "feels", label: "Feels" })} />
           <YouRow plain icon={I.tag} label="Tags & labels" onClick={() => onPush({ kind: "tags", label: "Tags & labels" })} />
           <YouRow plain icon={I.cloud} label="Backup & sync" value={syncVal} dot={syncDot} onClick={() => onPush({ kind: "backup", label: "Backup & sync" })} />
         </div>
@@ -1979,6 +2010,73 @@ function Prefs({ finish, setFinish, removed = [], onRestore }) {
           <p className="foot pref-foot">Restoring brings a film back with its copies, tags and notes. Watch history was never touched.</p>
         </section>
       )}
+    </div>
+  );
+}
+
+function FeelsView({ films, D }) {
+  const [renaming, setRenaming] = useState(null);
+  const [newFeel, setNewFeel] = useState(null);
+  const cfg = D.feelPrefs;
+  const hidden = cfg.hidden || [];
+  const count = (id) => films.filter((f) => f.themes.includes(id)).length;
+  const clean = (s) => (s || "").trim().replace(/\s+/g, " ");
+  const save = (id) => { const to = clean(renaming.to); if (to) D.renameFeel(id, to); setRenaming(null); };
+  const row = (id, label, extra) => (
+    <div className="pref-cell" key={id}>
+      {renaming && renaming.id === id ? (
+        <form className="grow" style={{ display: "flex", gap: 8 }} onSubmit={(e) => { e.preventDefault(); save(id); }}>
+          <input className="field" style={{ height: 34, fontSize: 15 }} value={renaming.to} onChange={(e) => setRenaming({ id, to: e.target.value })} aria-label={"Rename " + label} autoFocus maxLength={32} />
+          <button className="link" type="submit">Save</button>
+        </form>
+      ) : (
+        <>
+          <span className="grow">{label} <span className="muted tnum">· {count(id)}</span></span>
+          <button className="link" style={{ fontSize: 15 }} onClick={() => setRenaming({ id, to: label })}>Rename</button>
+          {extra}
+        </>
+      )}
+    </div>
+  );
+  return (
+    <div className="page prefs">
+      <div className="page-head"><h1>Feels</h1></div>
+      <section>
+        <div className="section-label caps pref-sec">Built-in feels</div>
+        <div className="you-group">
+          {FEELS.filter(([id]) => !hidden.includes(id)).map(([id, t]) => row(id, (cfg.names || {})[id] || t,
+            <button style={{ fontSize: 15, color: "var(--danger)", marginLeft: 14 }} onClick={() => D.hideFeel(id)}>Remove</button>))}
+          {hidden.length === FEELS.length && <div className="pref-cell muted" style={{ fontSize: 15 }}>All built-in feels removed.</div>}
+        </div>
+        <p className="foot pref-foot">Removing a feel hides it from filters, Home and film pages. Films keep it quietly, so restoring brings everything back. To change which films have a feel, use Edit themes on a film's page.</p>
+        {hidden.length > 0 && (
+          <>
+            <div className="section-label caps pref-sec" style={{ marginTop: 18 }}>Removed</div>
+            <div className="you-group">
+              {hidden.filter((id) => FEELS.some((f) => f[0] === id)).map((id) => (
+                <div className="pref-cell" key={id}>
+                  <span className="grow muted">{(cfg.names || {})[id] || FEELS.find((f) => f[0] === id)[1]} <span className="tnum">· {count(id)}</span></span>
+                  <button className="link" style={{ fontSize: 15 }} onClick={() => D.restoreFeel(id)}>Restore</button>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </section>
+      <section>
+        <div className="dir-sub pref-sec"><span className="section-label caps">Your feels</span><button className="link" onClick={() => setNewFeel("")}>New feel</button></div>
+        <div className="you-group">
+          {newFeel != null && (
+            <form className="pref-cell" onSubmit={(e) => { e.preventDefault(); const n = clean(newFeel); if (n) D.addFeel(n); setNewFeel(null); }}>
+              <input className="field" style={{ height: 36, fontSize: 16 }} value={newFeel} onChange={(e) => setNewFeel(e.target.value)} autoFocus maxLength={32} placeholder="Feel name" aria-label="New feel name" onBlur={() => { const n = clean(newFeel); if (n) D.addFeel(n); setNewFeel(null); }} />
+            </form>
+          )}
+          {(cfg.custom || []).length === 0 && newFeel == null && <div className="pref-cell muted" style={{ fontSize: 15 }}>None yet. Make one here or from any film's Edit themes.</div>}
+          {(cfg.custom || []).map((c) => row(c.id, c.name,
+            <button style={{ fontSize: 15, color: "var(--danger)", marginLeft: 14 }} onClick={() => D.removeFeel(c.id)}>Remove</button>))}
+        </div>
+        <p className="foot pref-foot">Removing one of yours takes it off every film.</p>
+      </section>
     </div>
   );
 }
@@ -2317,11 +2415,18 @@ function PeekSheet({ f, onWant, wanted, onOwn, onClose }) {
 }
 
 // ─── FILM PAGE ──────────────────────────────────────────────────────────
-function FilmPage({ nav = "in", below = false, onPeek, wanted, deckItem, deckDays = 7, onDeckToggle, film, films, ix, onNight, onBuildAround, allTags, backLabel, onBack, onOpen, onPerson, onUpdate, onLog, onUnlog, onRemove, onPicker, onAddTag, onRemoveTag, onEditCopy, onEditDetails }) {
+function FilmPage({ nav = "in", below = false, onPeek, wanted, deckItem, deckDays = 7, onDeckToggle, film, films, ix, onNight, onBuildAround, allTags, backLabel, onBack, onOpen, onPerson, onUpdate, onLog, onUnlog, onRemove, onPicker, onAddTag, onRemoveTag, onEditCopy, onEditDetails, themeDefs = ALL_THEMES, onAddFeel }) {
   const [note, setNote] = useState(film.note);
   const [newTag, setNewTag] = useState(null);
   const [editTags, setEditTags] = useState(false);
   const [editThemes, setEditThemes] = useState(false);
+  const [newFeel, setNewFeel] = useState(null);
+  const shownThemes = film.themes.filter((id) => themeDefs.some((d) => d[0] === id));
+  const createFeel = () => {
+    const n = (newFeel || "").trim().replace(/\s+/g, " ");
+    if (n && onAddFeel) { const id = onAddFeel(n); if (!film.themes.includes(id)) toggleTheme(id); }
+    setNewFeel(null);
+  };
   const [logging, setLogging] = useState(false);
   // Turning a theme on/off undoes an earlier correction first, so a film can always go back to TMDB's answer.
   const toggleTheme = (id) => {
@@ -2337,7 +2442,7 @@ function FilmPage({ nav = "in", below = false, onPeek, wanted, deckItem, deckDay
   const [armRemove, setArmRemove] = useState(false); // removing takes two taps
   useEffect(() => { if (!armRemove) return; const t = setTimeout(() => setArmRemove(false), 4000); return () => clearTimeout(t); }, [armRemove]);
   const ref = useRef(null);
-  useEffect(() => { setNote(film.note); setNewTag(null); setEditTags(false); setEditThemes(false); setDoomed(null); ref.current?.scrollTo(0, 0); }, [film.key]);
+  useEffect(() => { setNote(film.note); setNewTag(null); setEditTags(false); setEditThemes(false); setNewFeel(null); setDoomed(null); ref.current?.scrollTo(0, 0); }, [film.key]);
   const createTag = () => {
     const t = (newTag || "").trim().replace(/\s+/g, " ");
     if (t) { onAddTag(t); if (!film.rawTags.includes(t)) onUpdate(film.key, { tags: [...film.rawTags, t] }); }
@@ -2480,16 +2585,21 @@ function FilmPage({ nav = "in", below = false, onPeek, wanted, deckItem, deckDay
           <div>
             <div className="stat-head" style={{ marginBottom: 8 }}>
               <span className="section-label" style={{ margin: 0 }}>Themes</span>
-              <button className="link" style={{ fontSize: 14 }} onClick={() => setEditThemes(!editThemes)}>{editThemes ? "Done" : film.themes.length ? "Edit themes" : "Add themes"}</button>
+              <button className="link" style={{ fontSize: 14 }} onClick={() => setEditThemes(!editThemes)}>{editThemes ? "Done" : shownThemes.length ? "Edit themes" : "Add themes"}</button>
             </div>
             <div className="tag-row">
-              {(editThemes ? ALL_THEMES : ALL_THEMES.filter(([id]) => film.themes.includes(id))).map(([id, label]) => {
+              {(editThemes ? themeDefs : themeDefs.filter(([id]) => film.themes.includes(id))).map(([id, label]) => {
                 const on = film.themes.includes(id);
                 return editThemes
                   ? <button key={id} className={"chip" + (on ? " on" : "")} aria-pressed={on} onClick={() => toggleTheme(id)}>{label}</button>
                   : <span key={id} className="chip theme-chip">{label}</span>;
               })}
-              {!editThemes && film.themes.length === 0 && <span className="muted" style={{ fontSize: 14 }}>None yet. Themes feed the Theme filter and Home shelves.</span>}
+              {editThemes && onAddFeel && (newFeel == null
+                ? <button className="chip" onClick={() => setNewFeel("")}>+ New feel</button>
+                : <form style={{ display: "inline-flex" }} onSubmit={(e) => { e.preventDefault(); createFeel(); }}>
+                    <input className="field" style={{ height: 34, fontSize: 15, width: 150 }} value={newFeel} onChange={(e) => setNewFeel(e.target.value)} autoFocus maxLength={32} placeholder="Feel name" aria-label="New feel name" onBlur={createFeel} />
+                  </form>)}
+              {!editThemes && shownThemes.length === 0 && <span className="muted" style={{ fontSize: 14 }}>None yet. Themes and feels feed the filters and Home shelves.</span>}
             </div>
           </div>
 
@@ -4235,8 +4345,9 @@ export default function App() {
     // its watch history stays in the diary.
     return [...SEED_COLLECTION, ...D.added.filter((f) => !seedKeys.has(fkey(f)))]
       .filter((f) => !D.userData[fkey(f)]?.removed)
-      .map((f) => deriveFilm(f, D.userData, D.watchLog, hiddenTags));
-  }, [D.added, D.userData, D.watchLog, hiddenTags]);
+      .map((f) => deriveFilm(f, D.userData, D.watchLog, hiddenTags, D.feelPrefs.custom || []));
+  }, [D.added, D.userData, D.watchLog, hiddenTags, D.feelPrefs.custom]);
+  const feels = useMemo(() => feelList(D.feelPrefs), [D.feelPrefs]);
   const removedFilms = useMemo(() => {
     const seedKeys = new Set(SEED_COLLECTION.map(fkey));
     return [...SEED_COLLECTION, ...D.added.filter((f) => !seedKeys.has(fkey(f)))]
@@ -4255,7 +4366,7 @@ export default function App() {
   // Color shelves join Home once every poster's color is known (read in the background, once per poster).
   const colorProgress = usePosterColors(shelfFilms, true);
   const colorShelves = useMemo(() => (colorProgress ? [] : buildColorShelves(shelfFilms)), [shelfFilms, colorProgress]);
-  const recipes = useMemo(() => [...buildRecipes(shelfFilms, D.customTags, homePairs), ...colorShelves], [shelfFilms, D.customTags, homePairs, colorShelves]);
+  const recipes = useMemo(() => [...buildRecipes(shelfFilms, D.customTags, homePairs, D.feelPrefs), ...colorShelves], [shelfFilms, D.customTags, homePairs, D.feelPrefs, colorShelves]);
   const [wantOpen, setWantOpen] = useState(null); // a want's id, for its sheet
   const [peek, setPeek] = useState(null); // a greyed-out filmography film
   const wanted = useMemo(() => new Set(D.want.filter((w) => !w.bought).map((w) => wantId(w).toLowerCase())), [D.want]);
@@ -4273,7 +4384,8 @@ export default function App() {
   }, []);
   const [night, setNight] = useState(null);
   const [finish, setFinish] = useStored("shelf-finishby", 23);
-  const defs = useMemo(() => makeFilters(D.customTags, hiddenTags, recipes), [D.customTags, hiddenTags, recipes]);
+  const defs = useMemo(() => makeFilters(D.customTags, hiddenTags, recipes, feels), [D.customTags, hiddenTags, recipes, feels]);
+  const themeDefs = useMemo(() => [...THEMES.map(([id, l]) => [id, l]), ...feels], [feels]);
   const allTags = useMemo(() => [...Object.entries(TAGS).filter(([k]) => !hiddenTags.includes(k)), ...D.customTags.map((t) => [t, t])], [D.customTags, hiddenTags]);
   // Label chips for copies: the ones you use most, then ones you've typed, then the usual boutique and studio labels.
   const labels = useMemo(() => {
@@ -4456,7 +4568,7 @@ export default function App() {
           deck={deck} deckDays={deckDays} onDeckPin={onDeckPinE} onDeckRemove={onDeckRemoveE} onDeckPick={onDeckPickE} onDeckAll={onDeckAllE} />
       </main>
       {/* Tabs stay built in the background, so switching back is instant and keeps your place. */}
-      <main hidden={tab !== "library"}><LibraryTab films={films} customTags={D.customTags} extra={extra} setExtra={setExtra} onOpen={openFilmE} onAdd={onAddE} searchFocus={searchFocus} onFocused={onFocusedE} reset={libReset} /></main>
+      <main hidden={tab !== "library"}><LibraryTab films={films} customTags={D.customTags} feels={feels} extra={extra} setExtra={setExtra} onOpen={openFilmE} onAdd={onAddE} searchFocus={searchFocus} onFocused={onFocusedE} reset={libReset} /></main>
       <main hidden={tab !== "you"}><YouTab films={shelfFilms} want={D.want} programs={D.programs} sync={sync} onOpen={openFilmE} onPush={onPushE} /></main>
       </div>
       <div className={"nav-dim" + (covered ? " on" : "")} aria-hidden="true" />
@@ -4476,6 +4588,7 @@ export default function App() {
         if (typeof e !== "string" && e.kind === "stats") return page(<Stats films={shelfFilms} onPerson={onPerson} onLabel={onLabelE} />);
         if (typeof e !== "string" && e.kind === "prefs") return page(<Prefs finish={finish} setFinish={setFinish} removed={removedFilms} onRestore={restoreFilm} />);
         if (typeof e !== "string" && e.kind === "tags") return page(<TagsView films={films} D={D} />);
+        if (typeof e !== "string" && e.kind === "feels") return page(<FeelsView films={films} D={D} />);
         if (typeof e !== "string" && e.kind === "backup") return page(<div className="page"><div className="page-head"><h1>Backup &amp; sync</h1></div><Backup bare D={D} sync={sync} films={films} /></div>);
         if (typeof e !== "string" && e.kind === "doubles") {
           return <DoublesPage key={depth + ":" + e.id} nav={nav} below={below} entry={e} films={films} ix={ix} programs={D.programs} onNight={setNight} finish={finish} backLabel={label} onBack={back} />;
@@ -4487,7 +4600,7 @@ export default function App() {
         if (!f) return null;
         return (
           <FilmPage key={depth + ":" + e} nav={nav} below={below} onPeek={setPeek} wanted={wanted}
-            deckItem={deck.find((x) => x.key === f.key)} deckDays={deckDays} onDeckToggle={(film) => toggleDeck(film)} film={f} films={films} ix={ix} onNight={setNight} onBuildAround={buildAround} allTags={allTags} onAddTag={D.addTag} onRemoveTag={D.removeTag}
+            deckItem={deck.find((x) => x.key === f.key)} deckDays={deckDays} onDeckToggle={(film) => toggleDeck(film)} film={f} films={films} ix={ix} onNight={setNight} onBuildAround={buildAround} allTags={allTags} onAddTag={D.addTag} onRemoveTag={D.removeTag} themeDefs={themeDefs} onAddFeel={D.addFeel}
             onEditCopy={(c) => setCopyEdit({ key: f.key, copy: c })} onEditDetails={() => setDetailsFor(f.key)} backLabel={label} onBack={back} onOpen={openFilm} onPerson={onPerson}
             onUpdate={D.updateFilm} onLog={logFilm} onUnlog={D.unlogWatch} onRemove={removeFilm} onPicker={(t) => setPicking({ key: f.key, tab: t })} />
         );

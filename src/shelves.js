@@ -22,7 +22,7 @@ const tagged = (t) => (f) => f.tags.includes(t);
 // Home's own shelves join as filters too, so Pick another can draw from "Hidden gems" or "Michael Mann".
 // Shelves an existing group already covers (genres, eras, lengths, last watched, editions, tags) are left out.
 const SHELF_DUPES = new Set(["asia", "horror", "scifi5", "comedy", "war", "animation", "five", "short", "epic", "dusty", "never", "editions", "tag:comfort", "tag:rewatch", "tag:hidden"]);
-export const makeFilters = (customTags = [], hiddenTags = [], recipes = []) => [
+export const makeFilters = (customTags = [], hiddenTags = [], recipes = [], feels = feelList()) => [
   ["mood", "Mood", [
     ["comfort", "Comfort", (f) => (f.rating ?? 0) >= 4.5 || f.tags.includes("comfort")],
     ["five", "5 stars", (f) => f.rating === 5],
@@ -31,10 +31,10 @@ export const makeFilters = (customTags = [], hiddenTags = [], recipes = []) => [
     ...customTags.map((t) => ["tag:" + t, t, tagged(t)]),
   ]],
   ["shelf", "Shelf", recipes
-    .filter((r) => r.kind !== "person" && r.kind !== "pairs" && !THEME_IDS.includes(r.id) && !FEEL_IDS.includes(r.id) && !SHELF_DUPES.has(r.id) && !r.id.startsWith("dec") && !(r.id.startsWith("tag:") && customTags.includes(r.id.slice(4))))
+    .filter((r) => r.kind !== "person" && r.kind !== "pairs" && !THEME_IDS.includes(r.id) && !FEEL_IDS.includes(r.id) && !r.id.startsWith("c:") && !SHELF_DUPES.has(r.id) && !r.id.startsWith("dec") && !(r.id.startsWith("tag:") && customTags.includes(r.id.slice(4))))
     .map((r) => [r.id, r.title, r.test])],
   ["theme", "Theme", THEMES.map(([id, title]) => [id, title, (f) => f.themes.includes(id)])],
-  ["feel", "Feel", feelOptions()],
+  ["feel", "Feel", feelOptions(feels)],
   ["people", "People", recipes
     .filter((r) => r.kind === "person")
     .sort((a, b) => b.id.startsWith("dir:") - a.id.startsWith("dir:") || b.films.length - a.films.length || a.title.localeCompare(b.title))
@@ -155,15 +155,21 @@ export const THEMES = VIBES.filter((v) => THEME_IDS.includes(v[0]));
 const FEEL_IDS = ["dialogue", "adrenaline", "sensory", "mind", "trippy", "dread", "comfort", "quotable", "darkcomedy", "absurd", "slowburn", "gutpunch", "shortfuse"];
 export const FEELS = VIBES.filter((v) => FEEL_IDS.includes(v[0]));
 export const ALL_THEMES = [...THEMES, ...FEELS]; // what a film's `themes` can hold
-const hasFeel = (f) => FEEL_IDS.some((id) => f.themes.includes(id));
+const hasFeel = (f) => f.themes.some((id) => FEEL_IDS.includes(id) || id.startsWith("c:"));
 // Films added after the lists were seeded, with no feel yet: the to-do list for tagging new purchases.
 export const unfelt = (f) => !hasFeel(f) && typeof f.addedKey === "string" && f.addedKey > FEEL_SEEDED;
-export const feelOptions = (count = () => 1) => [
-  ...FEELS.map(([id, title]) => [id, title, (f) => f.themes.includes(id)]).filter((o) => count(o[2]) > 0),
+// Your Feel setup: built-ins can be renamed or removed, and you can add your own ("c:" ids). cfg = { custom, names, hidden }.
+export const NO_FEEL_CFG = { custom: [], names: {}, hidden: [] };
+export const feelList = (cfg = NO_FEEL_CFG) => [
+  ...FEELS.filter(([id]) => !(cfg.hidden || []).includes(id)).map(([id, title]) => [id, (cfg.names || {})[id] || title]),
+  ...(cfg.custom || []).map((c) => [c.id, c.name]),
+];
+export const feelOptions = (list = feelList(), count = () => 1) => [
+  ...list.map(([id, title]) => [id, title, (f) => f.themes.includes(id)]).filter((o) => count(o[2]) > 0),
   ["unfelt", "New, no feel yet", unfelt],
 ];
 
-export function buildRecipes(films, customTags = [], pairs = []) {
+export function buildRecipes(films, customTags = [], pairs = [], feelCfg = NO_FEEL_CFG) {
   const out = [];
   const add = (r) => {
     const list = films.filter((f) => !f.tags.includes("sell") && r.test(f));
@@ -187,7 +193,8 @@ export function buildRecipes(films, customTags = [], pairs = []) {
   });
 
   // Themes use each film's corrected theme list, so hand edits on a film page flow into Home.
-  VIBES.forEach(([id, title, test]) => add({ id, title, test: THEME_IDS.includes(id) || FEEL_IDS.includes(id) ? (f) => f.themes.includes(id) : test }));
+  VIBES.forEach(([id, title, test]) => !(FEEL_IDS.includes(id) && (feelCfg.hidden || []).includes(id)) && add({ id, title: (FEEL_IDS.includes(id) && (feelCfg.names || {})[id]) || title, test: THEME_IDS.includes(id) || FEEL_IDS.includes(id) ? (f) => f.themes.includes(id) : test }));
+  (feelCfg.custom || []).forEach((c) => add({ id: c.id, title: c.name, test: (f) => f.themes.includes(c.id) }));
 
   [1960, 1970, 1980, 1990].forEach((d) =>
     add({ id: "dec" + d, title: `The ${String(d).slice(2)}s, on your shelf`, test: (f) => f.yearNum >= d && f.yearNum < d + 10 }));
