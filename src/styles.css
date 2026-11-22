@@ -30,9 +30,9 @@
 }
 
 /* Theme "mix": champagne stays the core color (interface, badges, links). Three supporting colors each get one job:
-   rose is ratings, teal marks your own tags and themes, periwinkle is people in Doubles. "Champagne" is the plain version. */
+   teal is ratings and marks your own tags and themes, periwinkle is people in Doubles. "Champagne" is the plain version. */
 html[data-theme="mix"] {
-  --star: #e48a9c;
+  --star: #5fc2b1;
   --mark-fill: rgba(79, 174, 159, 0.15);
   --mark-line: rgba(79, 174, 159, 0.5);
   --mark-ink: var(--label);
