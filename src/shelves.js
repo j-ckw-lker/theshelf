@@ -129,6 +129,8 @@ const VIBES = [
   ["satire", "Satire", hasKw("satire")],
   ["timetravel", "Time travel", hasKw("time travel")],
   ["vampires", "Vampires", hasKw("vampire")],
+  // Keyword catches most; Watchmen and Joker are comic-book films TMDB doesn't tag as superhero.
+  ["capeshit", "Cape shit", (f) => hasKw("superhero")(f) || ["Watchmen|2009", "Joker|2019"].includes(f.key)],
   ["horror", "Lights off: horror", hasGenre("Horror")],
   ["scifi5", "Sci-fi you rated 5 stars", (f) => f.genres.includes("Science Fiction") && f.rating === 5],
   ["comedy", "Comedy, for when it's been a week", hasGenre("Comedy")],
@@ -156,7 +158,7 @@ const VIBES = [
 ];
 
 // Keyword themes, reused as a Theme filter in the Library (the genre/country/rating vibes are filters already).
-const THEME_IDS = ["yakuza", "heist", "hitmen", "paranoia", "killers", "spies", "dystopia", "revenge", "martial", "bw", "nyc", "la", "gangsters", "satire", "timetravel", "vampires"];
+const THEME_IDS = ["yakuza", "heist", "hitmen", "paranoia", "killers", "spies", "dystopia", "revenge", "martial", "bw", "nyc", "la", "gangsters", "satire", "timetravel", "vampires", "capeshit"];
 export const THEMES = VIBES.filter((v) => THEME_IDS.includes(v[0]));
 const FEEL_IDS = ["dialogue", "adrenaline", "sensory", "mind", "trippy", "dread", "comfort", "quotable", "darkcomedy", "absurd", "slowburn", "gutpunch", "paranoid", "neon", "shortfuse", "marathon"];
 export const FEELS = VIBES.filter((v) => FEEL_IDS.includes(v[0]));
