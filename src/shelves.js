@@ -139,7 +139,7 @@ const VIBES = [
   ["mind", "Mind-bending", inList("mind")],
   ["trippy", "Hallucinatory", inList("trippy")],
   ["dread", "Dread", inList("dread")],
-  ["comfort", "Comfort watch", inList("comfort")],
+  ["comfort", "Comfort watch", (f) => curated.comfort.has(f.key) || (f.tags || []).includes("comfort")], // the curated list plus anything you tagged "comfort"
   ["quotable", "Funny: quotable", inList("quotable")],
   ["darkcomedy", "Funny: dark and cringe", inList("darkcomedy")],
   ["absurd", "Funny: absurd", inList("absurd")],
