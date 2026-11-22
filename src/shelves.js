@@ -90,14 +90,16 @@ export const filterTest = (defs, filters, skipKey) => (f) =>
     if (key === skipKey) return true;
     const sel = filters[key];
     if (!sel || sel === "any") return true;
+    // Feel can hold several picks and needs all of them; every other group holds one.
+    if (Array.isArray(sel)) return sel.every((v) => { const o = opts.find((x) => x[0] === v); return !o || o[2](f); });
     const opt = opts.find((o) => o[0] === sel);
     return !opt || opt[2](f);
   });
 
 export const activeFilterLabels = (defs, filters) =>
   defs.flatMap(([key, , opts]) => {
-    const opt = opts.find((o) => o[0] === filters[key]);
-    return opt ? [opt[1]] : [];
+    const picked = [].concat(filters[key] ?? []);
+    return picked.flatMap((v) => { const opt = opts.find((o) => o[0] === v); return opt ? [opt[1]] : []; });
   });
 
 // ─── Home shelves ───────────────────────────────────────────────────────

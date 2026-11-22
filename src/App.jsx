@@ -905,10 +905,13 @@ function Home({ films, defs, recipes, filters, home, setHome, onOpen, onSeeAll, 
 function FilterSheet({ films, defs, filters, setFilters, onClose }) {
   const matching = films.filter(filterTest(defs, filters)).length;
   const groups = useMemo(() => defs.map(([key, label, opts]) => {
-    const base = films.filter(filterTest(defs, filters, key));
+    const base = films.filter(filterTest(defs, filters, key === "feel" ? null : key)); // feel counts keep the feels already picked, since each pick narrows
     return { key, label, opts: opts.map(([o, l, test]) => ({ o, l, n: base.filter(test).length })) };
   }), [films, defs, filters]);
-  const set = (key, o) => setFilters({ ...filters, [key]: filters[key] === o ? "any" : o });
+  // Feel takes several picks (films must have all of them); every other group takes one.
+  const picks = (key) => [].concat(filters[key] && filters[key] !== "any" ? filters[key] : []);
+  const isOn = (key, o) => picks(key).includes(o);
+  const set = (key, o) => setFilters({ ...filters, [key]: key === "feel" ? (isOn(key, o) ? picks(key).filter((x) => x !== o) : [...picks(key), o]) : (filters[key] === o ? "any" : o) });
   // Long groups (People, Shelf) show their first dozen plus whatever's picked, with the rest one tap away.
   const [open, setOpen] = useState({});
   const CAP = 12;
@@ -920,8 +923,8 @@ function FilterSheet({ films, defs, filters, setFilters, onClose }) {
         <div key={g.key}>
           <div className="section-label">{g.label}</div>
           <div className="tag-row">
-            {g.opts.filter((x, i) => open[g.key] || i < CAP || filters[g.key] === x.o).map(({ o, l, n }) => {
-              const on = filters[g.key] === o;
+            {g.opts.filter((x, i) => open[g.key] || i < CAP || isOn(g.key, x.o)).map(({ o, l, n }) => {
+              const on = isOn(g.key, o);
               return (
                 <button key={o} className={"chip tnum" + (on ? " on" : "") + (!on && n === 0 ? " dim" : "")} aria-pressed={on} onClick={() => set(g.key, o)}>
                   {l} · {n}
