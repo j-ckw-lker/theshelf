@@ -2014,7 +2014,46 @@ function Prefs({ finish, setFinish, removed = [], onRestore }) {
   );
 }
 
-function FeelsView({ films, D }) {
+// Pick films: tick the films that belong to one feel. Same hand-correction as a film page's Edit themes.
+function FeelPick({ id, name, films, D }) {
+  const [q, setQ] = useState("");
+  const [view, setView] = useState("in");
+  const inFeel = films.filter((f) => f.themes.includes(id));
+  const query = q.trim().toLowerCase();
+  const shown = (query || view === "all" ? films : inFeel)
+    .filter((f) => !query || f.name.toLowerCase().includes(query) || f.year === query)
+    .slice().sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+  return (
+    <div className="page prefs">
+      <div className="page-head"><h1>{name}</h1></div>
+      <label className="search" style={{ margin: "0 0 10px" }}>
+        <Icon d={I.search} size={16} sw={2.2} />
+        <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a film to add or remove" aria-label="Find a film" />
+      </label>
+      {!query && (
+        <div className="seg" style={{ marginBottom: 12 }}>
+          <button className={view === "in" ? "on" : ""} onClick={() => setView("in")}>In this feel · {inFeel.length}</button>
+          <button className={view === "all" ? "on" : ""} onClick={() => setView("all")}>All films · {films.length}</button>
+        </div>
+      )}
+      <div className="you-group">
+        {shown.length === 0 && <div className="pref-cell muted" style={{ fontSize: 15 }}>{query ? "No film matches." : "Nothing here yet. Switch to All films and tick some."}</div>}
+        {shown.map((f) => {
+          const on = f.themes.includes(id);
+          return (
+            <button key={f.key} className="pref-cell" style={{ minHeight: 62 }} role="checkbox" aria-checked={on} onClick={() => toggleThemeOf(f, id, D.updateFilm)}>
+              <div style={{ width: 36, flexShrink: 0, padding: "9px 0" }}><Poster path={f.posterPath} title={f.name} size="w92" /></div>
+              <span className="grow">{f.name} <span className="muted tnum">· {f.year}</span></span>
+              <span className={"chip" + (on ? " on" : "")} style={{ pointerEvents: "none", minWidth: 40, textAlign: "center" }}>{on ? "✓" : "+"}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function FeelsView({ films, D, onPush }) {
   const [renaming, setRenaming] = useState(null);
   const [newFeel, setNewFeel] = useState(null);
   const cfg = D.feelPrefs;
@@ -2031,7 +2070,7 @@ function FeelsView({ films, D }) {
         </form>
       ) : (
         <>
-          <span className="grow">{label} <span className="muted tnum">· {count(id)}</span></span>
+          <button className="grow" style={{ textAlign: "left", fontSize: 17 }} onClick={() => onPush({ kind: "feelpick", fid: id, label })} aria-label={"Pick films for " + label}>{label} <span className="muted tnum">· {count(id)} ›</span></button>
           <button className="link" style={{ fontSize: 15 }} onClick={() => setRenaming({ id, to: label })}>Rename</button>
           {extra}
         </>
@@ -2048,7 +2087,7 @@ function FeelsView({ films, D }) {
             <button style={{ fontSize: 15, color: "var(--danger)", marginLeft: 14 }} onClick={() => D.hideFeel(id)}>Remove</button>))}
           {hidden.length === FEELS.length && <div className="pref-cell muted" style={{ fontSize: 15 }}>All built-in feels removed.</div>}
         </div>
-        <p className="foot pref-foot">Removing a feel hides it from filters, Home and film pages. Films keep it quietly, so restoring brings everything back. To change which films have a feel, use Edit themes on a film's page.</p>
+        <p className="foot pref-foot">Removing a feel hides it from filters, Home and film pages. Films keep it quietly, so restoring brings everything back. Tap a feel to pick its films, or use Edit themes on a film's page.</p>
         {hidden.length > 0 && (
           <>
             <div className="section-label caps pref-sec" style={{ marginTop: 18 }}>Removed</div>
@@ -2415,6 +2454,16 @@ function PeekSheet({ f, onWant, wanted, onOwn, onClose }) {
 }
 
 // ─── FILM PAGE ──────────────────────────────────────────────────────────
+// Turning a theme on/off undoes an earlier correction first, so a film can always go back to TMDB's answer.
+const toggleThemeOf = (film, id, onUpdate) => {
+  const u = { add: film.themesAdd || [], off: film.themesOff || [] };
+  if (film.themes.includes(id)) {
+    if (u.add.includes(id)) onUpdate(film.key, { themesAdd: u.add.filter((x) => x !== id) });
+    else onUpdate(film.key, { themesOff: [...u.off, id] });
+  } else if (u.off.includes(id)) onUpdate(film.key, { themesOff: u.off.filter((x) => x !== id) });
+  else onUpdate(film.key, { themesAdd: [...u.add, id] });
+};
+
 function FilmPage({ nav = "in", below = false, onPeek, wanted, deckItem, deckDays = 7, onDeckToggle, film, films, ix, onNight, onBuildAround, allTags, backLabel, onBack, onOpen, onPerson, onUpdate, onLog, onUnlog, onRemove, onPicker, onAddTag, onRemoveTag, onEditCopy, onEditDetails, themeDefs = ALL_THEMES, onAddFeel }) {
   const [note, setNote] = useState(film.note);
   const [newTag, setNewTag] = useState(null);
@@ -2428,16 +2477,7 @@ function FilmPage({ nav = "in", below = false, onPeek, wanted, deckItem, deckDay
     setNewFeel(null);
   };
   const [logging, setLogging] = useState(false);
-  // Turning a theme on/off undoes an earlier correction first, so a film can always go back to TMDB's answer.
-  const toggleTheme = (id) => {
-    const u = { add: film.themesAdd || [], off: film.themesOff || [] };
-    const on = film.themes.includes(id);
-    if (on) {
-      if (u.add.includes(id)) onUpdate(film.key, { themesAdd: u.add.filter((x) => x !== id) });
-      else onUpdate(film.key, { themesOff: [...u.off, id] });
-    } else if (u.off.includes(id)) onUpdate(film.key, { themesOff: u.off.filter((x) => x !== id) });
-    else onUpdate(film.key, { themesAdd: [...u.add, id] });
-  };
+  const toggleTheme = (id) => toggleThemeOf(film, id, onUpdate);
   const [doomed, setDoomed] = useState(null);
   const [armRemove, setArmRemove] = useState(false); // removing takes two taps
   useEffect(() => { if (!armRemove) return; const t = setTimeout(() => setArmRemove(false), 4000); return () => clearTimeout(t); }, [armRemove]);
@@ -4588,7 +4628,8 @@ export default function App() {
         if (typeof e !== "string" && e.kind === "stats") return page(<Stats films={shelfFilms} onPerson={onPerson} onLabel={onLabelE} />);
         if (typeof e !== "string" && e.kind === "prefs") return page(<Prefs finish={finish} setFinish={setFinish} removed={removedFilms} onRestore={restoreFilm} />);
         if (typeof e !== "string" && e.kind === "tags") return page(<TagsView films={films} D={D} />);
-        if (typeof e !== "string" && e.kind === "feels") return page(<FeelsView films={films} D={D} />);
+        if (typeof e !== "string" && e.kind === "feels") return page(<FeelsView films={films} D={D} onPush={onPushE} />);
+        if (typeof e !== "string" && e.kind === "feelpick") return page(<FeelPick id={e.fid} name={e.label} films={films} D={D} />);
         if (typeof e !== "string" && e.kind === "backup") return page(<div className="page"><div className="page-head"><h1>Backup &amp; sync</h1></div><Backup bare D={D} sync={sync} films={films} /></div>);
         if (typeof e !== "string" && e.kind === "doubles") {
           return <DoublesPage key={depth + ":" + e.id} nav={nav} below={below} entry={e} films={films} ix={ix} programs={D.programs} onNight={setNight} finish={finish} backLabel={label} onBack={back} />;
