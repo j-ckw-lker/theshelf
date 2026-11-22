@@ -941,7 +941,7 @@ function FilterSheet({ films, defs, filters, setFilters, onClose }) {
 }
 
 // ─── LIBRARY ────────────────────────────────────────────────────────────
-// One filter model: OR within a group, AND across groups. The chip row only shows shortcuts into it.
+// One filter model: OR within a group (except Feel, which is AND), AND across groups. The chip row only shows shortcuts into it.
 const byCount = (lists) => {
   const m = new Map();
   lists.forEach((l) => [...new Set(l)].forEach((v) => m.set(v, (m.get(v) || 0) + 1)));
@@ -1006,7 +1006,8 @@ const libGroups = (films, customTags, hiddenTags = [], feels = feelList()) => {
 };
 // Selected options that still exist (a deleted tag or label quietly drops out).
 const activeOpts = (groups, sel) => groups.map(([g, name, opts]) => [g, name, opts.filter((o) => (sel[g] || []).includes(o[0]))]).filter((x) => x[2].length);
-const selTest = (active, skip) => (f) => active.every(([g, , opts]) => g === skip || opts.some((o) => o[2](f)));
+// Feel is the one group that narrows: pick Dialogue and Dread and you get films with both. Every other group widens (any of).
+const selTest = (active, skip) => (f) => active.every(([g, , opts]) => g === skip || (g === "feel" ? opts.every((o) => o[2](f)) : opts.some((o) => o[2](f))));
 
 // ─── POSTER COLOR ───────────────────────────────────────────────────────
 // Sorting by color needs each poster's dominant hue. Read once per poster from a 92px thumbnail and
@@ -1364,7 +1365,7 @@ function LibraryFilter({ films, groups, sel, active, onToggle, onReset, onClose 
   const [more, setMore] = useState({});
   const shown = films.filter(selTest(active)).length;
   const counts = useMemo(() => Object.fromEntries(groups.map(([g, , opts]) => {
-    const base = films.filter(selTest(active, g));
+    const base = films.filter(selTest(active, g === "feel" ? null : g)); // feel counts include the feels already picked, since each pick narrows
     return [g, Object.fromEntries(opts.map(([k, , t]) => [k, base.filter(t).length]))];
   })), [films, groups, active]);
   const on = (g, k) => (sel[g] || []).includes(k);
