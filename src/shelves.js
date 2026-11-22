@@ -139,12 +139,20 @@ const VIBES = [
   ["mind", "Mind-bending", inList("mind")],
   ["trippy", "Hallucinatory", inList("trippy")],
   ["dread", "Dread", inList("dread")],
+  ["comfort", "Comfort watch", inList("comfort")],
+  ["quotable", "Funny: quotable", inList("quotable")],
+  ["darkcomedy", "Funny: dark and cringe", inList("darkcomedy")],
+  ["absurd", "Funny: absurd", inList("absurd")],
+  ["slowburn", "Slow burn", inList("slowburn")],
+  ["gutpunch", "Gut-punch", inList("gutpunch")],
+  // Short and propulsive: under 100 minutes and already a fast feel. Reads the lists directly because themes aren't built yet.
+  ["shortfuse", "Short fuse", (f) => !!f.runtime && f.runtime <= 100 && ["adrenaline", "dialogue", "dread"].some((id) => curated[id].has(f.key))],
 ];
 
 // Keyword themes, reused as a Theme filter in the Library (the genre/country/rating vibes are filters already).
 const THEME_IDS = ["yakuza", "heist", "hitmen", "paranoia", "killers", "spies", "dystopia", "revenge", "martial", "bw", "nyc", "la", "gangsters", "satire", "timetravel", "vampires"];
 export const THEMES = VIBES.filter((v) => THEME_IDS.includes(v[0]));
-const FEEL_IDS = ["dialogue", "adrenaline", "sensory", "mind", "trippy", "dread"];
+const FEEL_IDS = ["dialogue", "adrenaline", "sensory", "mind", "trippy", "dread", "comfort", "quotable", "darkcomedy", "absurd", "slowburn", "gutpunch", "shortfuse"];
 export const FEELS = VIBES.filter((v) => FEEL_IDS.includes(v[0]));
 export const ALL_THEMES = [...THEMES, ...FEELS]; // what a film's `themes` can hold
 const hasFeel = (f) => FEEL_IDS.some((id) => f.themes.includes(id));

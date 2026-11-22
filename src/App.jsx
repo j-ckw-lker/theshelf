@@ -919,7 +919,7 @@ const byCount = (lists) => {
 };
 const GENRE_NAMES = { "Science Fiction": "Sci-fi" };
 // Groups that get long show their biggest few, with an "All N" to open the rest.
-const GROUP_CAP = { label: 10, genre: 12, theme: 10, feel: 12, country: 8, director: 10 };
+const GROUP_CAP = { label: 10, genre: 12, theme: 10, feel: 8, country: 8, director: 10 };
 let regionNames = null;
 const countryName = (code) => {
   if (code === "US") return "US";
