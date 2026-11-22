@@ -801,8 +801,6 @@ function Home({ films, defs, recipes, filters, home, setHome, onOpen, onSeeAll, 
   const canDealMore = shelves.length === deal + extra * 3 && recipes.length > shelves.length;
   const labels = activeFilterLabels(defs, filters);
   const filterLabel = labels.length === 0 ? "Filters" : labels.length === 1 ? labels[0] : labels[0] + " +" + (labels.length - 1);
-  const [logoFailed, setLogoFailed] = useState(false);
-  useEffect(() => setLogoFailed(false), [pick && pick.key]);
 
   const another = () => {
     if (eligible.length < 2) return;
@@ -840,9 +838,7 @@ function Home({ films, defs, recipes, filters, home, setHome, onOpen, onSeeAll, 
             {tonight && <span className="caps-badge solid">Tonight</span>}
             {pick ? (
               <button className="hero-title" onClick={() => onOpen(pick)} aria-label={"Open " + pick.name}>
-                {pick.logo && !logoFailed
-                  ? <img src={img(pick.logo, "w500")} alt={pick.name} onError={() => setLogoFailed(true)} />
-                  : <span>{pick.name}</span>}
+                <LogoTitle key={pick.key} film={pick} />
               </button>
             ) : (
               <span style={{ fontSize: 22, fontWeight: 700 }}>Nothing on the shelf fits every filter.</span>
@@ -2600,13 +2596,32 @@ const toggleSeasonOf = (film, id, onUpdate) => {
 
 // The title as the Home picker shows it: the film's own logo over the banner, plain bold type when there isn't one.
 function FilmTitle({ film }) {
-  const [failed, setFailed] = useState(false);
   return (
     <h1 className="film-title">
-      {film.logo && !failed
-        ? <img src={img(film.logo, "w500")} alt={film.name} onError={() => setFailed(true)} />
-        : <span>{film.name}</span>}
+      <LogoTitle key={film.key} film={film} />
     </h1>
+  );
+}
+
+// Logo art when it has really loaded, the plain-type name the rest of the time (still loading, errored, or loaded blank),
+// so the title slot is never empty.
+function LogoTitle({ film }) {
+  const [state, setState] = useState(film.logo ? "loading" : "failed");
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (el && el.complete) setState(el.naturalWidth > 0 ? "ok" : "failed");
+  }, []);
+  return (
+    <>
+      {film.logo && state !== "failed" && (
+        <img ref={ref} src={img(film.logo, "w500")} alt={film.name}
+          onLoad={(e) => setState(e.currentTarget.naturalWidth > 0 ? "ok" : "failed")}
+          onError={() => setState("failed")}
+          style={state === "ok" ? undefined : { position: "absolute", width: 1, height: 1, opacity: 0, pointerEvents: "none" }} />
+      )}
+      {state !== "ok" && <span>{film.name}</span>}
+    </>
   );
 }
 
