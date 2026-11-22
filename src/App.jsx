@@ -2537,7 +2537,6 @@ function FilmPage({ nav = "in", below = false, onPeek, wanted, deckItem, deckDay
           {film.backdrop && <Banner key={film.backdrop} path={film.backdrop} pos={film.backdropPos} />}
           {film.tmdb && <button className="icon-btn glass banner-edit" onClick={() => onPicker("banner")} aria-label="Change banner"><Icon d={I.image} size={17} sw={2} /></button>}
           <button className="back" onClick={onBack}><Icon d={I.back} size={20} sw={2.4} /><span>{backLabel}</span></button>
-          <FilmTitle key={film.key} film={film} />
         </div>
 
         <div className="film-head">
@@ -2545,6 +2544,7 @@ function FilmPage({ nav = "in", below = false, onPeek, wanted, deckItem, deckDay
             <Poster path={film.posterPath} title={film.name} eager low={["w92", "w185"]} />
           </button>
           <div style={{ minWidth: 0, paddingBottom: 2 }}>
+            <FilmTitle key={film.key} film={film} />
             {film.directors.length > 0 && (
               <button className="who" onClick={() => onPerson(film.directors[0])}>
                 {peopleLabel(film.directors)}<Icon d={I.chev} size={13} sw={2.4} />
