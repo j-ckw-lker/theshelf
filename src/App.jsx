@@ -828,7 +828,7 @@ function Home({ films, defs, recipes, filters, home, setHome, onOpen, onSeeAll, 
                 <span>{pick.year}</span>
                 {pick.runtime && <span>{runtimeLabel(pick.runtime)}</span>}
                 {pick.directors.length > 0 && <span>{peopleLabel(pick.directors)}</span>}
-                {pick.rating != null && <span className="accent">{stars(pick.rating)}</span>}
+                {pick.rating != null && <span className="accent rating">{stars(pick.rating)}</span>}
               </div>
               <div className="btn-row">
                 <button className="btn btn-primary" onClick={() => onOpen(pick)}>Details</button>
@@ -1334,7 +1334,7 @@ function Library({ films: allFilms, customTags, feels, extra, setExtra, onOpen, 
                   <span className="meta tnum">
                     <span>{f.year}</span>
                     {f.directors[0] && <span className="who">{f.directors[0]}</span>}
-                    {f.rating != null && <span className="accent">{stars(f.rating)}</span>}
+                    {f.rating != null && <span className="accent rating">{stars(f.rating)}</span>}
                     {f.badges.slice(0, 1).map((b) => <span key={b} className="badge">{b}</span>)}
                   </span>
                 </span>
@@ -1757,7 +1757,7 @@ function You({ films, want, programs, sync, onOpen, onPush }) {
               <button key={f.key + d} className="you-recent-item" onPointerDown={() => preloadFilm(f)} onClick={() => onOpen(f)} aria-label={`${f.name}, watched ${fmtDate(d)}`}>
                 <Poster path={f.posterPath} title={f.name} size="w185" />
                 <span className="tnum">{fmtDate(d).replace(/, \d{4}$/, "")}</span>
-                {f.rating != null && <span className="accent stars-sm">{stars(f.rating)}</span>}
+                {f.rating != null && <span className="accent stars-sm rating">{stars(f.rating)}</span>}
               </button>
             ))}
           </div>
@@ -1842,7 +1842,7 @@ function Diary({ films, watchLog, onOpen }) {
                   {e.film ? <Poster path={e.film.posterPath} title={e.title} size="w92" className="thumb" /> : <span className="thumb poster-empty" aria-hidden="true" />}
                   <span className="body">
                     <span className="title">{e.title} <span className="muted tnum">{e.year}</span></span>
-                    <span className="meta"><span className="who">{e.film ? e.dir : "Not on your shelf"}</span>{e.rating != null && <span className="accent stars-sm" style={{ marginLeft: "auto" }}>{stars(e.rating)}</span>}</span>
+                    <span className="meta"><span className="who">{e.film ? e.dir : "Not on your shelf"}</span>{e.rating != null && <span className="accent stars-sm rating" style={{ marginLeft: "auto" }}>{stars(e.rating)}</span>}</span>
                   </span>
                 </Tag>
               );
@@ -1930,6 +1930,7 @@ function ServicesSheet({ onClose }) {
 
 function Prefs({ finish, setFinish, removed = [], onRestore }) {
   const [showRemoved, setShowRemoved] = useState(false);
+  const [theme, setTheme] = usePref("shelf-theme", "mix");
   const [view, setView] = usePref("shelf-libview", "wall");
   const [sort, setSort] = usePref("shelf-sort", "az");
   const [cols, setCols] = usePref("shelf-wallcols", 4);
@@ -1950,6 +1951,7 @@ function Prefs({ finish, setFinish, removed = [], onRestore }) {
       <section>
         <div className="section-label caps pref-sec">Library</div>
         <div className="you-group">
+          <SegRow label="Colors" value={theme} options={[["mix", "Mix"], ["champagne", "Champagne"]]} onChange={setTheme} />
           <SegRow label="Opens as" value={view} options={[["wall", "Poster wall"], ["list", "List"]]} onChange={setView} />
           <PickRow label="Sort by" value={SORTS[sort] ? sort : "az"} options={Object.entries(SORTS).map(([k, [l]]) => [k, l])} onChange={setSort} />
           <SegRow label="Poster size" value={cols} options={[[3, "L"], [4, "M"], [5, "S"]]} onChange={setCols} />
@@ -2531,7 +2533,7 @@ function FilmPage({ nav = "in", below = false, onPeek, wanted, deckItem, deckDay
             <div className="meta tnum">
               <span>{film.year}</span>
               {film.runtime && <span>{runtimeLabel(film.runtime)}</span>}
-              {film.rating != null && <span className="accent">{stars(film.rating)}</span>}
+              {film.rating != null && <span className="accent rating">{stars(film.rating)}</span>}
             </div>
             <ScoreLine tmdbId={film.tmdb} />
           </div>
@@ -4083,7 +4085,7 @@ function CriticsSection({ films }) {
   const row = (x) => (
     <div className="list-row" key={x.f.key}>
       <span className="grow">{x.f.name} <span className="muted tnum">{x.f.year}</span></span>
-      <span className="tnum critic-vs"><span className="accent">{stars(x.f.rating)}</span><span className="muted"> vs </span>{x.c.v}</span>
+      <span className="tnum critic-vs"><span className="accent rating">{stars(x.f.rating)}</span><span className="muted"> vs </span>{x.c.v}</span>
     </div>
   );
   return (
@@ -4377,6 +4379,10 @@ export default function App() {
   // Preference: a fresh Home pick every time the app opens, instead of one pick per day.
   useEffect(() => { if (getPref("shelf-random-pick", false)) setHome((h) => ({ ...h, pick: h.pick + 1 + Math.floor(Math.random() * 7) })); }, []);
 
+  const [theme] = usePref("shelf-theme", "mix");
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme === "champagne" ? "champagne" : "mix";
+      }, [theme]);
   const [hiddenTagsPref] = usePref("shelf-hidden-tags", "");
   const hiddenTags = useMemo(() => hiddenTagsPref.split(",").filter(Boolean), [hiddenTagsPref]);
   const films = useMemo(() => {
