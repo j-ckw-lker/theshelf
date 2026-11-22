@@ -101,6 +101,23 @@ export const activeFilterLabels = (defs, filters) =>
 // ─── Home shelves ───────────────────────────────────────────────────────
 const yearSub = (f) => f.year;
 
+// Hand-picked: films where the talk is the main event (fast, witty, propulsive, or the conversation is the plot).
+// Not derivable from TMDB keywords, so it's a seed list. Per-film corrections still work from the film page
+// (themesAdd / themesOff), same as every other theme.
+const DIALOGUE = new Set([
+  "Pulp Fiction|1994", "Reservoir Dogs|1992", "Jackie Brown|1997", "True Romance|1993", "Inglourious Basterds|2009", "Snatch|2000",
+  "Ocean's Eleven|2001", "The Social Network|2010", "Moneyball|2011", "Scott Pilgrim vs. the World|2010", "Ferris Bueller's Day Off|1986",
+  "The Princess Bride|1987", "Clue|1985", "Midnight Run|1988", "The Nice Guys|2016", "Burn After Reading|2008", "Charade|1963",
+  "Fear and Loathing in Las Vegas|1998", "Wayne's World|1992", "Before Sunrise|1995", "Before Sunset|2004", "Before Midnight|2013",
+  "12 Angry Men|1957", "When Harry Met Sally...|1989", "Good Will Hunting|1997", "Network|1976", "All the President's Men|1976",
+  "Anatomy of a Fall|2023", "Anatomy of a Murder|1959", "Glengarry Glen Ross|1992", "Broadcast News|1987", "Talk Radio|1988",
+  "The Big Lebowski|1998", "Fargo|1996", "Miller's Crossing|1990", "The Grand Budapest Hotel|2014", "Fantastic Mr. Fox|2009",
+  "Dr. Strangelove or: How I Learned to Stop Worrying and Love the Bomb|1964", "GoodFellas|1990", "Casino|1995",
+  "The Wolf of Wall Street|2013", "The Departed|2006", "Heat|1995", "Training Day|2001", "Uncut Gems|2019", "Marty Supreme|2025",
+  "Out of Sight|1998", "Airplane!|1980", "Step Brothers|2008", "Friday|1995", "This Is Spinal Tap|1984", "Best in Show|2000",
+  "Dazed and Confused|1993", "Zoolander|2001", "The Apartment|1960", "Sunset Boulevard|1950", "Sabrina|1954", "Moonstruck|1987",
+]);
+
 const VIBES = [
   ["asia", "Japan, Hong Kong & Korea", fromCountry("JP", "HK", "KR")],
   ["yakuza", "Yakuza pictures", hasKw("yakuza")],
@@ -117,6 +134,7 @@ const VIBES = [
   ["la", "Los Angeles after dark", hasKw("los angeles, california")],
   ["gangsters", "Gangsters", hasKw("gangster", "mafia")],
   ["satire", "Satire", hasKw("satire")],
+  ["dialogue", "Dialogue-driven", (f) => DIALOGUE.has(f.key)],
   ["timetravel", "Time travel", hasKw("time travel")],
   ["vampires", "Vampires", hasKw("vampire")],
   ["horror", "Lights off: horror", hasGenre("Horror")],
@@ -128,7 +146,7 @@ const VIBES = [
 ];
 
 // Keyword themes, reused as a Theme filter in the Library (the genre/country/rating vibes are filters already).
-const THEME_IDS = ["yakuza", "heist", "hitmen", "paranoia", "killers", "spies", "dystopia", "revenge", "martial", "bw", "nyc", "la", "gangsters", "satire", "timetravel", "vampires"];
+const THEME_IDS = ["yakuza", "heist", "hitmen", "paranoia", "killers", "spies", "dystopia", "revenge", "martial", "bw", "nyc", "la", "gangsters", "satire", "dialogue", "timetravel", "vampires"];
 export const THEMES = VIBES.filter((v) => THEME_IDS.includes(v[0]));
 
 export function buildRecipes(films, customTags = [], pairs = []) {
