@@ -1,0 +1,1746 @@
+{
+ "_note": "Season tags for The Shelf. Match films by name + year. Multi-select. Films not listed have no season (year-round). basis = 'your list' (from Jack's Letterboxd lists) or 'my call' (Claude's judgment, easily overridden). Meaning: when Jack wants to watch it, not setting.",
+ "seasons": [
+  "Fall",
+  "Summer",
+  "Winter",
+  "Christmas",
+  "Halloween"
+ ],
+ "films": [
+  {
+   "name": "Singin' in the Rain",
+   "year": 1952,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "your list"
+   }
+  },
+  {
+   "name": "Roman Holiday",
+   "year": 1953,
+   "seasons": [
+    "Summer"
+   ],
+   "basis": {
+    "Summer": "my call"
+   }
+  },
+  {
+   "name": "Rear Window",
+   "year": 1954,
+   "seasons": [
+    "Summer"
+   ],
+   "basis": {
+    "Summer": "my call"
+   }
+  },
+  {
+   "name": "Diabolique",
+   "year": 1955,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "The Trouble with Harry",
+   "year": 1955,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "my call"
+   }
+  },
+  {
+   "name": "12 Angry Men",
+   "year": 1957,
+   "seasons": [
+    "Summer"
+   ],
+   "basis": {
+    "Summer": "my call"
+   }
+  },
+  {
+   "name": "La Dolce Vita",
+   "year": 1960,
+   "seasons": [
+    "Summer"
+   ],
+   "basis": {
+    "Summer": "my call"
+   }
+  },
+  {
+   "name": "Psycho",
+   "year": 1960,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "The Apartment",
+   "year": 1960,
+   "seasons": [
+    "Christmas"
+   ],
+   "basis": {
+    "Christmas": "my call"
+   }
+  },
+  {
+   "name": "The Birds",
+   "year": 1963,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "Onibaba",
+   "year": 1964,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "The Umbrellas of Cherbourg",
+   "year": 1964,
+   "seasons": [
+    "Winter"
+   ],
+   "basis": {
+    "Winter": "my call"
+   }
+  },
+  {
+   "name": "Le Samouraï",
+   "year": 1967,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "your list"
+   }
+  },
+  {
+   "name": "Rosemary's Baby",
+   "year": 1968,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "The Bird with the Crystal Plumage",
+   "year": 1970,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "The Last Picture Show",
+   "year": 1971,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "my call"
+   }
+  },
+  {
+   "name": "The Exorcist",
+   "year": 1973,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "Black Christmas",
+   "year": 1974,
+   "seasons": [
+    "Winter",
+    "Christmas",
+    "Halloween"
+   ],
+   "basis": {
+    "Winter": "my call",
+    "Christmas": "my call",
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "The Texas Chain Saw Massacre",
+   "year": 1974,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "Deep Red",
+   "year": 1975,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "Jaws",
+   "year": 1975,
+   "seasons": [
+    "Summer"
+   ],
+   "basis": {
+    "Summer": "my call"
+   }
+  },
+  {
+   "name": "Alice, Sweet Alice",
+   "year": 1976,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "Rocky",
+   "year": 1976,
+   "seasons": [
+    "Winter"
+   ],
+   "basis": {
+    "Winter": "my call"
+   }
+  },
+  {
+   "name": "House",
+   "year": 1977,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "Suspiria",
+   "year": 1977,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "The Hills Have Eyes",
+   "year": 1977,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "Animal House",
+   "year": 1978,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "your list"
+   }
+  },
+  {
+   "name": "Days of Heaven",
+   "year": 1978,
+   "seasons": [
+    "Summer"
+   ],
+   "basis": {
+    "Summer": "my call"
+   }
+  },
+  {
+   "name": "Halloween",
+   "year": 1978,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "Alien",
+   "year": 1979,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "Salem's Lot",
+   "year": 1979,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "Altered States",
+   "year": 1980,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "Caddyshack",
+   "year": 1980,
+   "seasons": [
+    "Fall",
+    "Summer"
+   ],
+   "basis": {
+    "Fall": "your list",
+    "Summer": "my call"
+   }
+  },
+  {
+   "name": "Friday the 13th",
+   "year": 1980,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "The Fog",
+   "year": 1980,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "The Shining",
+   "year": 1980,
+   "seasons": [
+    "Winter",
+    "Halloween"
+   ],
+   "basis": {
+    "Winter": "my call",
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "Body Heat",
+   "year": 1981,
+   "seasons": [
+    "Summer"
+   ],
+   "basis": {
+    "Summer": "my call"
+   }
+  },
+  {
+   "name": "Halloween II",
+   "year": 1981,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "Possession",
+   "year": 1981,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "The Evil Dead",
+   "year": 1981,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "The Howling",
+   "year": 1981,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "Creepshow",
+   "year": 1982,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "Halloween III: Season of the Witch",
+   "year": 1982,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "The Thing",
+   "year": 1982,
+   "seasons": [
+    "Winter",
+    "Halloween"
+   ],
+   "basis": {
+    "Winter": "my call",
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "National Lampoon's Vacation",
+   "year": 1983,
+   "seasons": [
+    "Summer"
+   ],
+   "basis": {
+    "Summer": "my call"
+   }
+  },
+  {
+   "name": "Risky Business",
+   "year": 1983,
+   "seasons": [
+    "Summer"
+   ],
+   "basis": {
+    "Summer": "my call"
+   }
+  },
+  {
+   "name": "Scarface",
+   "year": 1983,
+   "seasons": [
+    "Summer"
+   ],
+   "basis": {
+    "Summer": "my call"
+   }
+  },
+  {
+   "name": "The Big Chill",
+   "year": 1983,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "my call"
+   }
+  },
+  {
+   "name": "The Dead Zone",
+   "year": 1983,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "my call"
+   }
+  },
+  {
+   "name": "Videodrome",
+   "year": 1983,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "A Nightmare on Elm Street",
+   "year": 1984,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "Back to the Future",
+   "year": 1985,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "your list"
+   }
+  },
+  {
+   "name": "Brazil",
+   "year": 1985,
+   "seasons": [
+    "Christmas"
+   ],
+   "basis": {
+    "Christmas": "my call"
+   }
+  },
+  {
+   "name": "Day of the Dead",
+   "year": 1985,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "Re-Animator",
+   "year": 1985,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "The Goonies",
+   "year": 1985,
+   "seasons": [
+    "Summer"
+   ],
+   "basis": {
+    "Summer": "my call"
+   }
+  },
+  {
+   "name": "Ferris Bueller's Day Off",
+   "year": 1986,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "your list"
+   }
+  },
+  {
+   "name": "Top Gun",
+   "year": 1986,
+   "seasons": [
+    "Fall",
+    "Summer"
+   ],
+   "basis": {
+    "Fall": "your list",
+    "Summer": "my call"
+   }
+  },
+  {
+   "name": "Dirty Dancing",
+   "year": 1987,
+   "seasons": [
+    "Fall",
+    "Summer"
+   ],
+   "basis": {
+    "Fall": "your list",
+    "Summer": "my call"
+   }
+  },
+  {
+   "name": "Evil Dead II",
+   "year": 1987,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "Hellraiser",
+   "year": 1987,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "Moonstruck",
+   "year": 1987,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "my call"
+   }
+  },
+  {
+   "name": "The Princess Bride",
+   "year": 1987,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "your list"
+   }
+  },
+  {
+   "name": "Beetlejuice",
+   "year": 1988,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "Hellbound: Hellraiser II",
+   "year": 1988,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "Killer Klowns from Outer Space",
+   "year": 1988,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "My Neighbor Totoro",
+   "year": 1988,
+   "seasons": [
+    "Summer"
+   ],
+   "basis": {
+    "Summer": "my call"
+   }
+  },
+  {
+   "name": "Back to the Future Part II",
+   "year": 1989,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "your list"
+   }
+  },
+  {
+   "name": "The 'Burbs",
+   "year": 1989,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "When Harry Met Sally...",
+   "year": 1989,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "your list"
+   }
+  },
+  {
+   "name": "Back to the Future Part III",
+   "year": 1990,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "your list"
+   }
+  },
+  {
+   "name": "Misery",
+   "year": 1990,
+   "seasons": [
+    "Winter",
+    "Halloween"
+   ],
+   "basis": {
+    "Winter": "my call",
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "The Exorcist III",
+   "year": 1990,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "The People Under the Stairs",
+   "year": 1991,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "The Silence of the Lambs",
+   "year": 1991,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "Alien³",
+   "year": 1992,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "Army of Darkness",
+   "year": 1992,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "Batman Returns",
+   "year": 1992,
+   "seasons": [
+    "Winter",
+    "Christmas"
+   ],
+   "basis": {
+    "Winter": "my call",
+    "Christmas": "my call"
+   }
+  },
+  {
+   "name": "Hellraiser III: Hell on Earth",
+   "year": 1992,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "Wayne's World",
+   "year": 1992,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "your list"
+   }
+  },
+  {
+   "name": "Dazed and Confused",
+   "year": 1993,
+   "seasons": [
+    "Summer"
+   ],
+   "basis": {
+    "Summer": "my call"
+   }
+  },
+  {
+   "name": "Jurassic Park",
+   "year": 1993,
+   "seasons": [
+    "Summer"
+   ],
+   "basis": {
+    "Summer": "my call"
+   }
+  },
+  {
+   "name": "Rudy",
+   "year": 1993,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "your list"
+   }
+  },
+  {
+   "name": "Wayne's World 2",
+   "year": 1993,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "your list"
+   }
+  },
+  {
+   "name": "Before Sunrise",
+   "year": 1995,
+   "seasons": [
+    "Fall",
+    "Summer"
+   ],
+   "basis": {
+    "Fall": "your list",
+    "Summer": "my call"
+   }
+  },
+  {
+   "name": "Fargo",
+   "year": 1996,
+   "seasons": [
+    "Winter"
+   ],
+   "basis": {
+    "Winter": "my call"
+   }
+  },
+  {
+   "name": "Hellraiser: Bloodline",
+   "year": 1996,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "Scream",
+   "year": 1996,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "The Long Kiss Goodnight",
+   "year": 1996,
+   "seasons": [
+    "Winter",
+    "Christmas"
+   ],
+   "basis": {
+    "Winter": "my call",
+    "Christmas": "my call"
+   }
+  },
+  {
+   "name": "Austin Powers: International Man of Mystery",
+   "year": 1997,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "your list"
+   }
+  },
+  {
+   "name": "Cure",
+   "year": 1997,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "Good Will Hunting",
+   "year": 1997,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "your list"
+   }
+  },
+  {
+   "name": "Perfect Blue",
+   "year": 1997,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "Scream 2",
+   "year": 1997,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "Wild Things",
+   "year": 1998,
+   "seasons": [
+    "Summer"
+   ],
+   "basis": {
+    "Summer": "my call"
+   }
+  },
+  {
+   "name": "Audition",
+   "year": 1999,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "Austin Powers: The Spy Who Shagged Me",
+   "year": 1999,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "your list"
+   }
+  },
+  {
+   "name": "Eyes Wide Shut",
+   "year": 1999,
+   "seasons": [
+    "Christmas"
+   ],
+   "basis": {
+    "Christmas": "my call"
+   }
+  },
+  {
+   "name": "American Psycho",
+   "year": 2000,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "Scream 3",
+   "year": 2000,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "Spirited Away",
+   "year": 2001,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "your list"
+   }
+  },
+  {
+   "name": "The Lord of the Rings: The Fellowship of the Ring",
+   "year": 2001,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "your list"
+   }
+  },
+  {
+   "name": "The Others",
+   "year": 2001,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "Wet Hot American Summer",
+   "year": 2001,
+   "seasons": [
+    "Summer"
+   ],
+   "basis": {
+    "Summer": "my call"
+   }
+  },
+  {
+   "name": "Y Tu Mamá También",
+   "year": 2001,
+   "seasons": [
+    "Summer"
+   ],
+   "basis": {
+    "Summer": "my call"
+   }
+  },
+  {
+   "name": "Austin Powers in Goldmember",
+   "year": 2002,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "your list"
+   }
+  },
+  {
+   "name": "Ju-on: The Grudge",
+   "year": 2002,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "Spider-Man",
+   "year": 2002,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "your list"
+   }
+  },
+  {
+   "name": "The Lord of the Rings: The Two Towers",
+   "year": 2002,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "your list"
+   }
+  },
+  {
+   "name": "House of 1000 Corpses",
+   "year": 2003,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "School of Rock",
+   "year": 2003,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "my call"
+   }
+  },
+  {
+   "name": "The Lord of the Rings: The Return of the King",
+   "year": 2003,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "your list"
+   }
+  },
+  {
+   "name": "Before Sunset",
+   "year": 2004,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "your list"
+   }
+  },
+  {
+   "name": "Dawn of the Dead",
+   "year": 2004,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "Spider-Man 2",
+   "year": 2004,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "your list"
+   }
+  },
+  {
+   "name": "The Life Aquatic with Steve Zissou",
+   "year": 2004,
+   "seasons": [
+    "Summer"
+   ],
+   "basis": {
+    "Summer": "my call"
+   }
+  },
+  {
+   "name": "Miami Vice",
+   "year": 2006,
+   "seasons": [
+    "Summer"
+   ],
+   "basis": {
+    "Summer": "my call"
+   }
+  },
+  {
+   "name": "Pan's Labyrinth",
+   "year": 2006,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "The Mist",
+   "year": 2007,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "Trick 'r Treat",
+   "year": 2007,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "Forgetting Sarah Marshall",
+   "year": 2008,
+   "seasons": [
+    "Fall",
+    "Summer"
+   ],
+   "basis": {
+    "Fall": "your list",
+    "Summer": "my call"
+   }
+  },
+  {
+   "name": "Speed Racer",
+   "year": 2008,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "your list"
+   }
+  },
+  {
+   "name": "Step Brothers",
+   "year": 2008,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "your list"
+   }
+  },
+  {
+   "name": "Antichrist",
+   "year": 2009,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "Fantastic Mr. Fox",
+   "year": 2009,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "your list"
+   }
+  },
+  {
+   "name": "Scott Pilgrim vs. the World",
+   "year": 2010,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "your list"
+   }
+  },
+  {
+   "name": "The Social Network",
+   "year": 2010,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "your list"
+   }
+  },
+  {
+   "name": "Moneyball",
+   "year": 2011,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "your list"
+   }
+  },
+  {
+   "name": "The Cabin in the Woods",
+   "year": 2011,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "Before Midnight",
+   "year": 2013,
+   "seasons": [
+    "Fall",
+    "Summer"
+   ],
+   "basis": {
+    "Fall": "your list",
+    "Summer": "my call"
+   }
+  },
+  {
+   "name": "Evil Dead",
+   "year": 2013,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "It Follows",
+   "year": 2014,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "The Grand Budapest Hotel",
+   "year": 2014,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "your list"
+   }
+  },
+  {
+   "name": "Whiplash",
+   "year": 2014,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "my call"
+   }
+  },
+  {
+   "name": "The Witch",
+   "year": 2015,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "La La Land",
+   "year": 2016,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "your list"
+   }
+  },
+  {
+   "name": "Phantom Thread",
+   "year": 2017,
+   "seasons": [
+    "Winter"
+   ],
+   "basis": {
+    "Winter": "my call"
+   }
+  },
+  {
+   "name": "Hereditary",
+   "year": 2018,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "Mandy",
+   "year": 2018,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "Midsommar",
+   "year": 2019,
+   "seasons": [
+    "Summer",
+    "Halloween"
+   ],
+   "basis": {
+    "Summer": "my call",
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "Once Upon a Time... in Hollywood",
+   "year": 2019,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "your list"
+   }
+  },
+  {
+   "name": "Portrait of a Lady on Fire",
+   "year": 2019,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "my call"
+   }
+  },
+  {
+   "name": "The Lighthouse",
+   "year": 2019,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "Possessor",
+   "year": 2020,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "Encanto",
+   "year": 2021,
+   "seasons": [
+    "Fall"
+   ],
+   "basis": {
+    "Fall": "your list"
+   }
+  },
+  {
+   "name": "Aftersun",
+   "year": 2022,
+   "seasons": [
+    "Summer"
+   ],
+   "basis": {
+    "Summer": "my call"
+   }
+  },
+  {
+   "name": "Barbarian",
+   "year": 2022,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "Hundreds of Beavers",
+   "year": 2022,
+   "seasons": [
+    "Winter"
+   ],
+   "basis": {
+    "Winter": "my call"
+   }
+  },
+  {
+   "name": "M3GAN",
+   "year": 2022,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "Pearl",
+   "year": 2022,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "Smile",
+   "year": 2022,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "Talk to Me",
+   "year": 2022,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "Top Gun: Maverick",
+   "year": 2022,
+   "seasons": [
+    "Fall",
+    "Summer"
+   ],
+   "basis": {
+    "Fall": "your list",
+    "Summer": "my call"
+   }
+  },
+  {
+   "name": "Triangle of Sadness",
+   "year": 2022,
+   "seasons": [
+    "Summer"
+   ],
+   "basis": {
+    "Summer": "my call"
+   }
+  },
+  {
+   "name": "Violent Night",
+   "year": 2022,
+   "seasons": [
+    "Winter",
+    "Christmas"
+   ],
+   "basis": {
+    "Winter": "my call",
+    "Christmas": "my call"
+   }
+  },
+  {
+   "name": "X",
+   "year": 2022,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "Anatomy of a Fall",
+   "year": 2023,
+   "seasons": [
+    "Winter"
+   ],
+   "basis": {
+    "Winter": "my call"
+   }
+  },
+  {
+   "name": "Evil Dead Rise",
+   "year": 2023,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "Infinity Pool",
+   "year": 2023,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "Late Night with the Devil",
+   "year": 2023,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "The Exorcist: Believer",
+   "year": 2023,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "Longlegs",
+   "year": 2024,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "Nosferatu",
+   "year": 2024,
+   "seasons": [
+    "Winter",
+    "Halloween"
+   ],
+   "basis": {
+    "Winter": "my call",
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "Smile 2",
+   "year": 2024,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "The Substance",
+   "year": 2024,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "28 Years Later",
+   "year": 2025,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "Bring Her Back",
+   "year": 2025,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "Obsession",
+   "year": 2025,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "my call"
+   }
+  },
+  {
+   "name": "Sinners",
+   "year": 2025,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  },
+  {
+   "name": "Weapons",
+   "year": 2025,
+   "seasons": [
+    "Halloween"
+   ],
+   "basis": {
+    "Halloween": "your list"
+   }
+  }
+ ]
+}

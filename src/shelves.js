@@ -3,6 +3,7 @@
 
 import { yearsSince, rng, shuffled, runtimeLabel } from "./lib.js";
 import curatedRaw from "./curated.json";
+import { seasonList, seasonOptions } from "./seasons.js";
 
 export const TAGS = {
   comfort: "Comfort",
@@ -22,7 +23,7 @@ const tagged = (t) => (f) => f.tags.includes(t);
 // Home's own shelves join as filters too, so Pick another can draw from "Hidden gems" or "Michael Mann".
 // Shelves an existing group already covers (genres, eras, lengths, last watched, editions, tags) are left out.
 const SHELF_DUPES = new Set(["asia", "horror", "scifi5", "comedy", "war", "animation", "five", "short", "epic", "dusty", "never", "editions", "tag:comfort", "tag:rewatch", "tag:hidden"]);
-export const makeFilters = (customTags = [], hiddenTags = [], recipes = [], feels = feelList()) => [
+export const makeFilters = (customTags = [], hiddenTags = [], recipes = [], feels = feelList(), seasons = seasonList()) => [
   ["mood", "Mood", [
     ["comfort", "Comfort", (f) => (f.rating ?? 0) >= 4.5 || f.tags.includes("comfort")],
     ["five", "5 stars", (f) => f.rating === 5],
@@ -32,6 +33,7 @@ export const makeFilters = (customTags = [], hiddenTags = [], recipes = [], feel
     .map((r) => [r.id, r.title, r.test])],
   ["theme", "Theme", THEMES.map(([id, title]) => [id, title, (f) => f.themes.includes(id)])],
   ["feel", "Feel", feelOptions(feels)],
+  ["season", "Season", seasonOptions(seasons)],
   ["people", "People", recipes
     .filter((r) => r.kind === "person")
     .sort((a, b) => b.id.startsWith("dir:") - a.id.startsWith("dir:") || b.films.length - a.films.length || a.title.localeCompare(b.title))

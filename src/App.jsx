@@ -9,6 +9,7 @@ import {
   sortKey, letterOf, peopleLabel, hashStr, rng, shuffled, yearsSince, parseEdition, copyBadges, copyLine, money,
   FORMATS, PACKAGES, pkgsOf, REGIONS, KNOWN_LABELS, canonicalLabel, newId, isDigital, CODE_QUALITIES,
 } from "./lib.js";
+import { SEASONS, NO_SEASON_CFG, seasonList, seasonOptions, filmSeasons } from "./seasons.js";
 import { TAGS, THEMES, ALL_THEMES, FEELS, feelList, feelOptions, NO_FEEL_CFG, makeFilters, filterTest, activeFilterLabels, buildRecipes, dealShelves } from "./shelves.js";
 import { pairIndex, bestPairs, partnersFor, scorePair, nightPlan, reasonLine } from "./pairs.js";
 import { streamingPartners, peekStreaming, streamLine, loadProviders } from "./streaming.js";
@@ -90,13 +91,14 @@ function useData() {
   const [watchLog, setWatchLog] = useStored("shelf-watchlog", {});
   const [customTags, setCustomTags] = useStored("shelf-customtags", []);
   const [programs, setPrograms] = useStored("shelf-programs", []);
+  const [seasonPrefs, setSeasonPrefs] = useStored("shelf-seasons", NO_SEASON_CFG); // same shape as feelPrefs
   const [feelPrefs, setFeelPrefs] = useStored("shelf-feels", NO_FEEL_CFG); // { custom: [{id, name}], names: {id: name}, hidden: [id] }
   const [labels, setLabels] = useStored("shelf-labels", []); // labels you've typed, offered as chips from then on
   // On deck: a short running pool of films you might watch this week. { key, added, tonight? }
   const [deck, setDeck] = useStored("shelf-deck", []);
   const retag = (fn) => setUserData((d) => Object.fromEntries(Object.entries(d).map(([k, u]) => [k, u.tags ? { ...u, tags: fn(u.tags) } : u])));
   return {
-    userData, added, want, watchLog, customTags, programs, labels, deck, feelPrefs,
+    userData, added, want, watchLog, customTags, programs, labels, deck, feelPrefs, seasonPrefs,
     setDeck,
     // Feel: built-ins can be renamed or removed (films keep them quietly); your own live under "c:" ids on films' themesAdd.
     addFeel: (name) => {
@@ -119,6 +121,28 @@ function useData() {
     removeFeel: (id) => {
       setFeelPrefs((p) => ({ ...NO_FEEL_CFG, ...p, custom: (p.custom || []).filter((c) => c.id !== id) }));
       setUserData((d) => Object.fromEntries(Object.entries(d).map(([k, u]) => [k, (u.themesAdd || u.themesOff) ? { ...u, themesAdd: (u.themesAdd || []).filter((x) => x !== id), themesOff: (u.themesOff || []).filter((x) => x !== id) } : u])));
+    },
+    // Season: same model as Feel. Built-ins rename or hide (films keep them quietly); your own have "s:" ids.
+    addSeason: (name) => {
+      const lower = name.toLowerCase();
+      const have = seasonList(seasonPrefs).concat(SEASONS.map((x) => [x[0], x[1]])).find((x) => x[1].toLowerCase() === lower);
+      if (have) return have[0];
+      const id = "s:" + newId();
+      setSeasonPrefs((p) => ({ ...NO_SEASON_CFG, ...p, custom: [...(p.custom || []), { id, name }] }));
+      return id;
+    },
+    renameSeason: (id, name) => setSeasonPrefs((p) => {
+      const base = SEASONS.find((x) => x[0] === id);
+      if (!base) return { ...NO_SEASON_CFG, ...p, custom: (p.custom || []).map((c) => (c.id === id ? { ...c, name } : c)) };
+      const names = { ...(p.names || {}) };
+      if (name === base[1]) delete names[id]; else names[id] = name;
+      return { ...NO_SEASON_CFG, ...p, names };
+    }),
+    hideSeason: (id) => setSeasonPrefs((p) => ({ ...NO_SEASON_CFG, ...p, hidden: [...new Set([...(p.hidden || []), id])] })),
+    restoreSeason: (id) => setSeasonPrefs((p) => ({ ...NO_SEASON_CFG, ...p, hidden: (p.hidden || []).filter((x) => x !== id) })),
+    removeSeason: (id) => {
+      setSeasonPrefs((p) => ({ ...NO_SEASON_CFG, ...p, custom: (p.custom || []).filter((c) => c.id !== id) }));
+      setUserData((d) => Object.fromEntries(Object.entries(d).map(([k, u]) => [k, Array.isArray(u.seasons) ? { ...u, seasons: u.seasons.filter((x) => x !== id) } : u])));
     },
     toggleDeck: (k) => setDeck((d) => (d.some((x) => x.key === k) ? d.filter((x) => x.key !== k) : [...d, { key: k, added: todayISO() }])),
     removeDeck: (k) => setDeck((d) => d.filter((x) => x.key !== k)),
@@ -188,8 +212,9 @@ function useData() {
       if (p.labels) setLabels(p.labels);
       if (p.deck) setDeck(p.deck);
       if (p.feelPrefs) setFeelPrefs({ ...NO_FEEL_CFG, ...p.feelPrefs });
+      if (p.seasonPrefs) setSeasonPrefs({ ...NO_SEASON_CFG, ...p.seasonPrefs });
     },
-    exportPayload: () => ({ userData, added, want, watchLog, customTags, programs, labels, deck, feelPrefs }),
+    exportPayload: () => ({ userData, added, want, watchLog, customTags, programs, labels, deck, feelPrefs, seasonPrefs }),
   };
 }
 
@@ -197,10 +222,11 @@ function useData() {
 // Keeps a copy of everything personal on the server (api/sync.js), locked with a passphrase:
 // saves a moment after each change, checks for newer copies when the app opens or comes back,
 // and merges when two devices both changed things. A new install just enters the passphrase.
-const SYNC_FIELDS = ["userData", "added", "want", "watchLog", "customTags", "programs", "labels", "deck", "feelPrefs"];
+const SYNC_FIELDS = ["userData", "added", "want", "watchLog", "customTags", "programs", "labels", "deck", "feelPrefs", "seasonPrefs"];
 const hasPersonal = (d) => !!(Object.keys(d.userData || {}).length || (d.added || []).length || Object.keys(d.watchLog || {}).length
   || (d.customTags || []).length || (d.programs || []).length || (d.labels || []).length
-  || (d.feelPrefs?.custom || []).length || Object.keys(d.feelPrefs?.names || {}).length || (d.feelPrefs?.hidden || []).length);
+  || (d.feelPrefs?.custom || []).length || Object.keys(d.feelPrefs?.names || {}).length || (d.feelPrefs?.hidden || []).length
+  || (d.seasonPrefs?.custom || []).length || Object.keys(d.seasonPrefs?.names || {}).length || (d.seasonPrefs?.hidden || []).length);
 const unionBy = (a = [], b = [], key) => { const m = new Map(); a.forEach((x) => m.set(key(x), x)); b.forEach((x) => m.set(key(x), x)); return [...m.values()]; };
 // Combine two copies; where both have the same thing, the second (this device) wins.
 function mergeDocs(server = {}, local = {}) {
@@ -222,6 +248,11 @@ function mergeDocs(server = {}, local = {}) {
       custom: unionBy(server.feelPrefs?.custom, local.feelPrefs?.custom, (c) => c.id),
       names: { ...(server.feelPrefs?.names || {}), ...(local.feelPrefs?.names || {}) },
       hidden: local.feelPrefs?.hidden || server.feelPrefs?.hidden || [], // this device's choice wins, so restoring sticks
+    },
+    seasonPrefs: {
+      custom: unionBy(server.seasonPrefs?.custom, local.seasonPrefs?.custom, (c) => c.id),
+      names: { ...(server.seasonPrefs?.names || {}), ...(local.seasonPrefs?.names || {}) },
+      hidden: local.seasonPrefs?.hidden || server.seasonPrefs?.hidden || [],
     },
   };
 }
@@ -381,6 +412,7 @@ function deriveFilm(raw, userData, watchLog, hiddenTags = [], customFeels = []) 
   const plus = u.themesAdd || [], minus = u.themesOff || [];
   out.themesAdd = plus; out.themesOff = minus;
   out.themes = [...ALL_THEMES, ...customFeels.map((c) => [c.id, c.name, () => false])].filter(([id, , t]) => plus.includes(id) || (!minus.includes(id) && t(out))).map((x) => x[0]);
+  out.seasons = filmSeasons(u, key);
   return out;
 }
 
@@ -952,14 +984,14 @@ const byCount = (lists) => {
 };
 const GENRE_NAMES = { "Science Fiction": "Sci-fi" };
 // Groups that get long show their biggest few, with an "All N" to open the rest.
-const GROUP_CAP = { label: 10, genre: 12, theme: 10, feel: 8, country: 8, director: 10 };
+const GROUP_CAP = { label: 10, genre: 12, theme: 10, feel: 8, season: 8, country: 8, director: 10 };
 let regionNames = null;
 const countryName = (code) => {
   if (code === "US") return "US";
   if (code === "GB") return "UK";
   try { regionNames ||= new Intl.DisplayNames(["en"], { type: "region" }); return regionNames.of(code) || code; } catch { return code; }
 };
-const libGroups = (films, customTags, hiddenTags = [], feels = feelList()) => {
+const libGroups = (films, customTags, hiddenTags = [], feels = feelList(), seasons = seasonList()) => {
   const has = (fn) => (f) => f.copies.some(fn);
   const formats = FORMATS.filter((x) => films.some(has((c) => c.format === x)));
   const pkgs = PACKAGES.filter((x) => x !== "Standard" && films.some(has((c) => pkgsOf(c).includes(x))));
@@ -982,6 +1014,7 @@ const libGroups = (films, customTags, hiddenTags = [], feels = feelList()) => {
     ["genre", "Genre", genres.map((g) => [g, GENRE_NAMES[g] || g, (f) => f.genres.includes(g)])],
     ["theme", "Theme", THEMES.map(([k, l]) => [k, l, (f) => f.themes.includes(k), films.filter((f) => f.themes.includes(k)).length]).filter((o) => o[3] > 0).sort((a, b) => b[3] - a[3]).map(([k, l, t]) => [k, l, t])],
     ["feel", "Feel", feelOptions(feels, (t) => films.some(t))],
+    ["season", "Season", seasonOptions(seasons, (t) => films.some(t))],
     ["country", "Country & language", [
       ...countries.map((c) => [c, countryName(c), (f) => f.countries.includes(c)]),
       ["foreign", "Not in English", (f) => f.lang && f.lang !== "en"],
@@ -1176,7 +1209,7 @@ const SORTS = {
 };
 const isColorSort = (k) => k === "color" || k === "colorcool";
 
-function Library({ films: allFilms, customTags, feels, extra, setExtra, onOpen, onAdd, searchFocus, onFocused, reset }) {
+function Library({ films: allFilms, customTags, feels, seasons, extra, setExtra, onOpen, onAdd, searchFocus, onFocused, reset }) {
   // Preferences: digital-only films and films tagged Sell can stay out of the Library unless you go looking.
   const [countDigital] = usePref("shelf-count-digital", false);
   const [hideSell] = usePref("shelf-hide-sell", false);
@@ -1186,7 +1219,7 @@ function Library({ films: allFilms, customTags, feels, extra, setExtra, onOpen, 
   const films = useMemo(() => allFilms.filter((f) => (countDigital || wantsDigital || !f.digitalOnly) && (!hideSell || wantsSell || !f.tags.includes("sell"))),
     [allFilms, countDigital, wantsDigital, hideSell, wantsSell]);
   const [hiddenTagsPref] = usePref("shelf-hidden-tags", "");
-  const groups = useMemo(() => libGroups(allFilms, customTags, hiddenTagsPref.split(",").filter(Boolean), feels), [allFilms, customTags, hiddenTagsPref, feels]);
+  const groups = useMemo(() => libGroups(allFilms, customTags, hiddenTagsPref.split(",").filter(Boolean), feels, seasons), [allFilms, customTags, hiddenTagsPref, feels, seasons]);
   const active = useMemo(() => activeOpts(groups, sel), [groups, sel]);
   const nActive = active.reduce((n, g) => n + g[2].length, 0);
   const toggle = (g, k) => setSel((s) => {
@@ -1777,6 +1810,7 @@ function You({ films, want, programs, sync, onOpen, onPush }) {
         <div className="you-group">
           <YouRow plain icon={I.sliders} label="Preferences" onClick={() => onPush({ kind: "prefs", label: "Preferences" })} />
           <YouRow plain icon={I.sliders} label="Feels" onClick={() => onPush({ kind: "feels", label: "Feels" })} />
+          <YouRow plain icon={I.sliders} label="Seasons" onClick={() => onPush({ kind: "seasons", label: "Seasons" })} />
           <YouRow plain icon={I.tag} label="Tags & labels" onClick={() => onPush({ kind: "tags", label: "Tags & labels" })} />
           <YouRow plain icon={I.cloud} label="Backup & sync" value={syncVal} dot={syncDot} onClick={() => onPush({ kind: "backup", label: "Backup & sync" })} />
         </div>
@@ -2118,6 +2152,112 @@ function FeelsView({ films, D, onPush }) {
           {(cfg.custom || []).length === 0 && newFeel == null && <div className="pref-cell muted" style={{ fontSize: 15 }}>None yet. Make one here or from any film's Add feels.</div>}
           {(cfg.custom || []).map((c) => row(c.id, c.name,
             <button style={{ fontSize: 15, color: "var(--danger)", marginLeft: 14 }} onClick={() => D.removeFeel(c.id)}>Remove</button>))}
+        </div>
+        <p className="foot pref-foot">Removing one of yours takes it off every film.</p>
+      </section>
+    </div>
+  );
+}
+
+// Pick films: tick the films that belong to one season. Same hand-correction as a film page's Edit seasons.
+function SeasonPick({ id, name, films, D }) {
+  const [q, setQ] = useState("");
+  const [view, setView] = useState("in");
+  const inSeason = films.filter((f) => (f.seasons || []).includes(id));
+  const query = q.trim().toLowerCase();
+  const shown = (query || view === "all" ? films : inSeason)
+    .filter((f) => !query || f.name.toLowerCase().includes(query) || f.year === query)
+    .slice().sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+  return (
+    <div className="page prefs">
+      <div className="page-head"><h1>{name}</h1></div>
+      <label className="search" style={{ margin: "0 0 10px" }}>
+        <Icon d={I.search} size={16} sw={2.2} />
+        <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a film to add or remove" aria-label="Find a film" />
+      </label>
+      {!query && (
+        <div className="seg" style={{ marginBottom: 12 }}>
+          <button className={view === "in" ? "on" : ""} onClick={() => setView("in")}>In this season · {inSeason.length}</button>
+          <button className={view === "all" ? "on" : ""} onClick={() => setView("all")}>All films · {films.length}</button>
+        </div>
+      )}
+      <div className="you-group">
+        {shown.length === 0 && <div className="pref-cell muted" style={{ fontSize: 15 }}>{query ? "No film matches." : "Nothing here yet. Switch to All films and tick some."}</div>}
+        {shown.map((f) => {
+          const on = (f.seasons || []).includes(id);
+          return (
+            <button key={f.key} className="pref-cell" style={{ minHeight: 62 }} role="checkbox" aria-checked={on} onClick={() => toggleSeasonOf(f, id, D.updateFilm)}>
+              <div style={{ width: 36, flexShrink: 0, padding: "9px 0" }}><Poster path={f.posterPath} title={f.name} size="w92" /></div>
+              <span className="grow">{f.name} <span className="muted tnum">· {f.year}</span></span>
+              <span className={"chip" + (on ? " on" : "")} style={{ pointerEvents: "none", minWidth: 40, textAlign: "center" }}>{on ? "✓" : "+"}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function SeasonsView({ films, D, onPush }) {
+  const [renaming, setRenaming] = useState(null);
+  const [newSeason, setNewSeason] = useState(null);
+  const cfg = D.seasonPrefs;
+  const hidden = cfg.hidden || [];
+  const count = (id) => films.filter((f) => (f.seasons || []).includes(id)).length;
+  const clean = (s) => (s || "").trim().replace(/\s+/g, " ");
+  const save = (id) => { const to = clean(renaming.to); if (to) D.renameSeason(id, to); setRenaming(null); };
+  const row = (id, label, extra) => (
+    <div className="pref-cell" key={id}>
+      {renaming && renaming.id === id ? (
+        <form className="grow" style={{ display: "flex", gap: 8 }} onSubmit={(e) => { e.preventDefault(); save(id); }}>
+          <input className="field" style={{ height: 34, fontSize: 15 }} value={renaming.to} onChange={(e) => setRenaming({ id, to: e.target.value })} aria-label={"Rename " + label} autoFocus maxLength={32} />
+          <button className="link" type="submit">Save</button>
+        </form>
+      ) : (
+        <>
+          <button className="grow" style={{ textAlign: "left", fontSize: 17 }} onClick={() => onPush({ kind: "seasonpick", fid: id, label })} aria-label={"Pick films for " + label}>{label} <span className="muted tnum">· {count(id)} ›</span></button>
+          <button className="link" style={{ fontSize: 15 }} onClick={() => setRenaming({ id, to: label })}>Rename</button>
+          {extra}
+        </>
+      )}
+    </div>
+  );
+  return (
+    <div className="page prefs">
+      <div className="page-head"><h1>Seasons</h1></div>
+      <section>
+        <div className="section-label caps pref-sec">Built-in seasons</div>
+        <div className="you-group">
+          {SEASONS.filter(([id]) => !hidden.includes(id)).map(([id, t]) => row(id, (cfg.names || {})[id] || t,
+            <button style={{ fontSize: 15, color: "var(--danger)", marginLeft: 14 }} onClick={() => D.hideSeason(id)}>Remove</button>))}
+          {hidden.length === SEASONS.length && <div className="pref-cell muted" style={{ fontSize: 15 }}>All built-in seasons removed.</div>}
+        </div>
+        <p className="foot pref-foot">Removing a season hides it from filters and film pages. Films keep it quietly, so restoring brings everything back. Tap a season to pick its films, or use Add seasons on a film's page.</p>
+        {hidden.length > 0 && (
+          <>
+            <div className="section-label caps pref-sec" style={{ marginTop: 18 }}>Removed</div>
+            <div className="you-group">
+              {hidden.filter((id) => SEASONS.some((f) => f[0] === id)).map((id) => (
+                <div className="pref-cell" key={id}>
+                  <span className="grow muted">{(cfg.names || {})[id] || SEASONS.find((f) => f[0] === id)[1]} <span className="tnum">· {count(id)}</span></span>
+                  <button className="link" style={{ fontSize: 15 }} onClick={() => D.restoreSeason(id)}>Restore</button>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </section>
+      <section>
+        <div className="dir-sub pref-sec"><span className="section-label caps">Your seasons</span><button className="link" onClick={() => setNewSeason("")}>New season</button></div>
+        <div className="you-group">
+          {newSeason != null && (
+            <form className="pref-cell" onSubmit={(e) => { e.preventDefault(); const n = clean(newSeason); if (n) D.addSeason(n); setNewSeason(null); }}>
+              <input className="field" style={{ height: 36, fontSize: 16 }} value={newSeason} onChange={(e) => setNewSeason(e.target.value)} autoFocus maxLength={32} placeholder="Season name" aria-label="New season name" onBlur={() => { const n = clean(newSeason); if (n) D.addSeason(n); setNewSeason(null); }} />
+            </form>
+          )}
+          {(cfg.custom || []).length === 0 && newSeason == null && <div className="pref-cell muted" style={{ fontSize: 15 }}>None yet. Make one here or from any film's Add seasons.</div>}
+          {(cfg.custom || []).map((c) => row(c.id, c.name,
+            <button style={{ fontSize: 15, color: "var(--danger)", marginLeft: 14 }} onClick={() => D.removeSeason(c.id)}>Remove</button>))}
         </div>
         <p className="foot pref-foot">Removing one of yours takes it off every film.</p>
       </section>
@@ -2469,6 +2609,12 @@ const toggleThemeOf = (film, id, onUpdate) => {
   else onUpdate(film.key, { themesAdd: [...u.add, id] });
 };
 
+// Season: write the film's whole list on its first edit, so the seed never comes back over a change.
+const toggleSeasonOf = (film, id, onUpdate) => {
+  const cur = film.seasons || [];
+  onUpdate(film.key, { seasons: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] });
+};
+
 // The title as the Home picker shows it: the film's own logo over the banner, plain bold type when there isn't one.
 function FilmTitle({ film }) {
   const [failed, setFailed] = useState(false);
@@ -2481,12 +2627,14 @@ function FilmTitle({ film }) {
   );
 }
 
-function FilmPage({ nav = "in", below = false, onPeek, wanted, deckItem, deckDays = 7, onDeckToggle, film, films, ix, onNight, onBuildAround, allTags, backLabel, onBack, onOpen, onPerson, onUpdate, onLog, onUnlog, onRemove, onPicker, onAddTag, onRemoveTag, onEditCopy, onEditDetails, themeDefs = ALL_THEMES, onAddFeel }) {
+function FilmPage({ nav = "in", below = false, onPeek, wanted, deckItem, deckDays = 7, onDeckToggle, film, films, ix, onNight, onBuildAround, allTags, backLabel, onBack, onOpen, onPerson, onUpdate, onLog, onUnlog, onRemove, onPicker, onAddTag, onRemoveTag, onEditCopy, onEditDetails, themeDefs = ALL_THEMES, onAddFeel, seasonDefs = [], onAddSeason }) {
   const [note, setNote] = useState(film.note);
   const [newTag, setNewTag] = useState(null);
   const [editTags, setEditTags] = useState(false);
   const [editThemes, setEditThemes] = useState(false);
   const [editFeels, setEditFeels] = useState(false);
+  const [editSeasons, setEditSeasons] = useState(false);
+  const [newSeason, setNewSeason] = useState(null);
   const [newFeel, setNewFeel] = useState(null);
   const plainIds = new Set(THEMES.map((d) => d[0]));
   const plainDefs = themeDefs.filter(([id]) => plainIds.has(id));
@@ -2497,6 +2645,12 @@ function FilmPage({ nav = "in", below = false, onPeek, wanted, deckItem, deckDay
     const n = (newFeel || "").trim().replace(/\s+/g, " ");
     if (n && onAddFeel) { const id = onAddFeel(n); if (!film.themes.includes(id)) toggleTheme(id); }
     setNewFeel(null);
+  };
+  const shownSeasons = (film.seasons || []).filter((id) => seasonDefs.some((d) => d[0] === id));
+  const createSeason = () => {
+    const n = (newSeason || "").trim().replace(/\s+/g, " ");
+    if (n && onAddSeason) { const id = onAddSeason(n); if (!(film.seasons || []).includes(id)) toggleSeasonOf(film, id, onUpdate); }
+    setNewSeason(null);
   };
   const [logging, setLogging] = useState(false);
   const toggleTheme = (id) => toggleThemeOf(film, id, onUpdate);
@@ -2662,6 +2816,27 @@ function FilmPage({ nav = "in", below = false, onPeek, wanted, deckItem, deckDay
                     <input className="field" style={{ height: 34, fontSize: 15, width: 150 }} value={newFeel} onChange={(e) => setNewFeel(e.target.value)} autoFocus maxLength={32} placeholder="Feel name" aria-label="New feel name" onBlur={createFeel} />
                   </form>)}
               {!editFeels && shownFeels.length === 0 && <span className="muted" style={{ fontSize: 14 }}>None yet. Feels feed the Feel filter and Home shelves.</span>}
+            </div>
+          </div>
+
+          <div>
+            <div className="stat-head" style={{ marginBottom: 8 }}>
+              <span className="section-label" style={{ margin: 0 }}>Season</span>
+              <button className="link" style={{ fontSize: 14 }} onClick={() => { setEditSeasons(!editSeasons); setNewSeason(null); }}>{editSeasons ? "Done" : shownSeasons.length ? "Edit seasons" : "Add seasons"}</button>
+            </div>
+            <div className="tag-row">
+              {(editSeasons ? seasonDefs : seasonDefs.filter(([id]) => (film.seasons || []).includes(id))).map(([id, label]) => {
+                const on = (film.seasons || []).includes(id);
+                return editSeasons
+                  ? <button key={id} className={"chip" + (on ? " on" : "")} aria-pressed={on} onClick={() => toggleSeasonOf(film, id, onUpdate)}>{label}</button>
+                  : <span key={id} className="chip theme-chip">{label}</span>;
+              })}
+              {editSeasons && onAddSeason && (newSeason == null
+                ? <button className="chip" onClick={() => setNewSeason("")}>+ New season</button>
+                : <form style={{ display: "inline-flex" }} onSubmit={(e) => { e.preventDefault(); createSeason(); }}>
+                    <input className="field" style={{ height: 34, fontSize: 15, width: 150 }} value={newSeason} onChange={(e) => setNewSeason(e.target.value)} autoFocus maxLength={32} placeholder="Season name" aria-label="New season name" onBlur={createSeason} />
+                  </form>)}
+              {!editSeasons && shownSeasons.length === 0 && <span className="muted" style={{ fontSize: 14 }}>None yet. Season is when you want to watch it, and feeds the Season filter.</span>}
             </div>
           </div>
 
@@ -4430,6 +4605,7 @@ export default function App() {
       .map((f) => deriveFilm(f, D.userData, D.watchLog, hiddenTags, D.feelPrefs.custom || []));
   }, [D.added, D.userData, D.watchLog, hiddenTags, D.feelPrefs.custom]);
   const feels = useMemo(() => feelList(D.feelPrefs), [D.feelPrefs]);
+  const seasons = useMemo(() => seasonList(D.seasonPrefs), [D.seasonPrefs]);
   const removedFilms = useMemo(() => {
     const seedKeys = new Set(SEED_COLLECTION.map(fkey));
     return [...SEED_COLLECTION, ...D.added.filter((f) => !seedKeys.has(fkey(f)))]
@@ -4466,7 +4642,7 @@ export default function App() {
   }, []);
   const [night, setNight] = useState(null);
   const [finish, setFinish] = useStored("shelf-finishby", 23);
-  const defs = useMemo(() => makeFilters(D.customTags, hiddenTags, recipes, feels), [D.customTags, hiddenTags, recipes, feels]);
+  const defs = useMemo(() => makeFilters(D.customTags, hiddenTags, recipes, feels, seasons), [D.customTags, hiddenTags, recipes, feels, seasons]);
   const themeDefs = useMemo(() => [...THEMES.map(([id, l]) => [id, l]), ...feels], [feels]);
   const allTags = useMemo(() => [...Object.entries(TAGS).filter(([k]) => !hiddenTags.includes(k)), ...D.customTags.map((t) => [t, t])], [D.customTags, hiddenTags]);
   // Label chips for copies: the ones you use most, then ones you've typed, then the usual boutique and studio labels.
@@ -4650,7 +4826,7 @@ export default function App() {
           deck={deck} deckDays={deckDays} onDeckPin={onDeckPinE} onDeckRemove={onDeckRemoveE} onDeckPick={onDeckPickE} onDeckAll={onDeckAllE} />
       </main>
       {/* Tabs stay built in the background, so switching back is instant and keeps your place. */}
-      <main hidden={tab !== "library"}><LibraryTab films={films} customTags={D.customTags} feels={feels} extra={extra} setExtra={setExtra} onOpen={openFilmE} onAdd={onAddE} searchFocus={searchFocus} onFocused={onFocusedE} reset={libReset} /></main>
+      <main hidden={tab !== "library"}><LibraryTab films={films} customTags={D.customTags} feels={feels} seasons={seasons} extra={extra} setExtra={setExtra} onOpen={openFilmE} onAdd={onAddE} searchFocus={searchFocus} onFocused={onFocusedE} reset={libReset} /></main>
       <main hidden={tab !== "you"}><YouTab films={shelfFilms} want={D.want} programs={D.programs} sync={sync} onOpen={openFilmE} onPush={onPushE} /></main>
       </div>
       <div className={"nav-dim" + (covered ? " on" : "")} aria-hidden="true" />
@@ -4672,6 +4848,8 @@ export default function App() {
         if (typeof e !== "string" && e.kind === "tags") return page(<TagsView films={films} D={D} />);
         if (typeof e !== "string" && e.kind === "feels") return page(<FeelsView films={films} D={D} onPush={onPushE} />);
         if (typeof e !== "string" && e.kind === "feelpick") return page(<FeelPick id={e.fid} name={e.label} films={films} D={D} />);
+        if (typeof e !== "string" && e.kind === "seasons") return page(<SeasonsView films={films} D={D} onPush={onPushE} />);
+        if (typeof e !== "string" && e.kind === "seasonpick") return page(<SeasonPick id={e.fid} name={e.label} films={films} D={D} />);
         if (typeof e !== "string" && e.kind === "backup") return page(<div className="page"><div className="page-head"><h1>Backup &amp; sync</h1></div><Backup bare D={D} sync={sync} films={films} /></div>);
         if (typeof e !== "string" && e.kind === "doubles") {
           return <DoublesPage key={depth + ":" + e.id} nav={nav} below={below} entry={e} films={films} ix={ix} programs={D.programs} onNight={setNight} finish={finish} backLabel={label} onBack={back} />;
@@ -4683,7 +4861,7 @@ export default function App() {
         if (!f) return null;
         return (
           <FilmPage key={depth + ":" + e} nav={nav} below={below} onPeek={setPeek} wanted={wanted}
-            deckItem={deck.find((x) => x.key === f.key)} deckDays={deckDays} onDeckToggle={(film) => toggleDeck(film)} film={f} films={films} ix={ix} onNight={setNight} onBuildAround={buildAround} allTags={allTags} onAddTag={D.addTag} onRemoveTag={D.removeTag} themeDefs={themeDefs} onAddFeel={D.addFeel}
+            deckItem={deck.find((x) => x.key === f.key)} deckDays={deckDays} onDeckToggle={(film) => toggleDeck(film)} film={f} films={films} ix={ix} onNight={setNight} onBuildAround={buildAround} allTags={allTags} onAddTag={D.addTag} onRemoveTag={D.removeTag} themeDefs={themeDefs} onAddFeel={D.addFeel} seasonDefs={seasons} onAddSeason={D.addSeason}
             onEditCopy={(c) => setCopyEdit({ key: f.key, copy: c })} onEditDetails={() => setDetailsFor(f.key)} backLabel={label} onBack={back} onOpen={openFilm} onPerson={onPerson}
             onUpdate={D.updateFilm} onLog={logFilm} onUnlog={D.unlogWatch} onRemove={removeFilm} onPicker={(t) => setPicking({ key: f.key, tab: t })} />
         );
