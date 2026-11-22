@@ -324,5 +324,38 @@
   "Y Tu Mamá También|2001",
   "Roma|1972",
   "La Strada|1954"
+ ],
+ "paranoid": [
+  "Blow Out|1981",
+  "Chinatown|1974",
+  "Black Swan|2010",
+  "Beau Is Afraid|2023",
+  "Burn After Reading|2008",
+  "All the President's Men|1976",
+  "Klute|1971",
+  "The Parallax View|1974",
+  "Three Days of the Condor|1975",
+  "The Manchurian Candidate|1962",
+  "Videodrome|1983",
+  "They Live|1988",
+  "Zodiac|2007",
+  "Shutter Island|2010",
+  "Rosemary's Baby|1968"
+ ],
+ "neon": [
+  "Body Heat|1981",
+  "Cutter's Way|1981",
+  "Cruising|1980",
+  "The Big Heat|1953",
+  "Drive|2011",
+  "To Live and Die in L.A.|1985",
+  "Thief|1981",
+  "Collateral|2004",
+  "Miami Vice|2006",
+  "Night Moves|1975",
+  "Dressed to Kill|1980",
+  "Taxi Driver|1976",
+  "Heat|1995",
+  "Blade Runner|1982"
  ]
 }

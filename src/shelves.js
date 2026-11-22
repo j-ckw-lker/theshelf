@@ -145,14 +145,18 @@ const VIBES = [
   ["absurd", "Funny: absurd", inList("absurd")],
   ["slowburn", "Slow burn", inList("slowburn")],
   ["gutpunch", "Gut-punch", inList("gutpunch")],
+  ["paranoid", "Paranoid", inList("paranoid")],
+  ["neon", "Neon grime", inList("neon")],
   // Short and propulsive: under 100 minutes and already a fast feel. Reads the lists directly because themes aren't built yet.
   ["shortfuse", "Short fuse", (f) => !!f.runtime && f.runtime <= 100 && ["adrenaline", "dialogue", "dread"].some((id) => curated[id].has(f.key))],
+  // Commit to it: 150 minutes or longer. The mirror of Short fuse.
+  ["marathon", "Marathon", (f) => !!f.runtime && f.runtime >= 150],
 ];
 
 // Keyword themes, reused as a Theme filter in the Library (the genre/country/rating vibes are filters already).
 const THEME_IDS = ["yakuza", "heist", "hitmen", "paranoia", "killers", "spies", "dystopia", "revenge", "martial", "bw", "nyc", "la", "gangsters", "satire", "timetravel", "vampires"];
 export const THEMES = VIBES.filter((v) => THEME_IDS.includes(v[0]));
-const FEEL_IDS = ["dialogue", "adrenaline", "sensory", "mind", "trippy", "dread", "comfort", "quotable", "darkcomedy", "absurd", "slowburn", "gutpunch", "shortfuse"];
+const FEEL_IDS = ["dialogue", "adrenaline", "sensory", "mind", "trippy", "dread", "comfort", "quotable", "darkcomedy", "absurd", "slowburn", "gutpunch", "paranoid", "neon", "shortfuse", "marathon"];
 export const FEELS = VIBES.filter((v) => FEEL_IDS.includes(v[0]));
 export const ALL_THEMES = [...THEMES, ...FEELS]; // what a film's `themes` can hold
 const hasFeel = (f) => f.themes.some((id) => FEEL_IDS.includes(id) || id.startsWith("c:"));
