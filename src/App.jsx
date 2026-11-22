@@ -2089,7 +2089,7 @@ function FeelsView({ films, D, onPush }) {
             <button style={{ fontSize: 15, color: "var(--danger)", marginLeft: 14 }} onClick={() => D.hideFeel(id)}>Remove</button>))}
           {hidden.length === FEELS.length && <div className="pref-cell muted" style={{ fontSize: 15 }}>All built-in feels removed.</div>}
         </div>
-        <p className="foot pref-foot">Removing a feel hides it from filters, Home and film pages. Films keep it quietly, so restoring brings everything back. Tap a feel to pick its films, or use Edit themes on a film's page.</p>
+        <p className="foot pref-foot">Removing a feel hides it from filters, Home and film pages. Films keep it quietly, so restoring brings everything back. Tap a feel to pick its films, or use Add feels on a film's page.</p>
         {hidden.length > 0 && (
           <>
             <div className="section-label caps pref-sec" style={{ marginTop: 18 }}>Removed</div>
@@ -2112,7 +2112,7 @@ function FeelsView({ films, D, onPush }) {
               <input className="field" style={{ height: 36, fontSize: 16 }} value={newFeel} onChange={(e) => setNewFeel(e.target.value)} autoFocus maxLength={32} placeholder="Feel name" aria-label="New feel name" onBlur={() => { const n = clean(newFeel); if (n) D.addFeel(n); setNewFeel(null); }} />
             </form>
           )}
-          {(cfg.custom || []).length === 0 && newFeel == null && <div className="pref-cell muted" style={{ fontSize: 15 }}>None yet. Make one here or from any film's Edit themes.</div>}
+          {(cfg.custom || []).length === 0 && newFeel == null && <div className="pref-cell muted" style={{ fontSize: 15 }}>None yet. Make one here or from any film's Add feels.</div>}
           {(cfg.custom || []).map((c) => row(c.id, c.name,
             <button style={{ fontSize: 15, color: "var(--danger)", marginLeft: 14 }} onClick={() => D.removeFeel(c.id)}>Remove</button>))}
         </div>
@@ -2471,8 +2471,13 @@ function FilmPage({ nav = "in", below = false, onPeek, wanted, deckItem, deckDay
   const [newTag, setNewTag] = useState(null);
   const [editTags, setEditTags] = useState(false);
   const [editThemes, setEditThemes] = useState(false);
+  const [editFeels, setEditFeels] = useState(false);
   const [newFeel, setNewFeel] = useState(null);
-  const shownThemes = film.themes.filter((id) => themeDefs.some((d) => d[0] === id));
+  const plainIds = new Set(THEMES.map((d) => d[0]));
+  const plainDefs = themeDefs.filter(([id]) => plainIds.has(id));
+  const feelDefs = themeDefs.filter(([id]) => !plainIds.has(id));
+  const shownThemes = film.themes.filter((id) => plainDefs.some((d) => d[0] === id));
+  const shownFeels = film.themes.filter((id) => feelDefs.some((d) => d[0] === id));
   const createFeel = () => {
     const n = (newFeel || "").trim().replace(/\s+/g, " ");
     if (n && onAddFeel) { const id = onAddFeel(n); if (!film.themes.includes(id)) toggleTheme(id); }
@@ -2626,22 +2631,38 @@ function FilmPage({ nav = "in", below = false, onPeek, wanted, deckItem, deckDay
 
           <div>
             <div className="stat-head" style={{ marginBottom: 8 }}>
+              <span className="section-label" style={{ margin: 0 }}>Feels</span>
+              <button className="link" style={{ fontSize: 14 }} onClick={() => { setEditFeels(!editFeels); setNewFeel(null); }}>{editFeels ? "Done" : shownFeels.length ? "Edit feels" : "Add feels"}</button>
+            </div>
+            <div className="tag-row">
+              {(editFeels ? feelDefs : feelDefs.filter(([id]) => film.themes.includes(id))).map(([id, label]) => {
+                const on = film.themes.includes(id);
+                return editFeels
+                  ? <button key={id} className={"chip" + (on ? " on" : "")} aria-pressed={on} onClick={() => toggleTheme(id)}>{label}</button>
+                  : <span key={id} className="chip theme-chip">{label}</span>;
+              })}
+              {editFeels && onAddFeel && (newFeel == null
+                ? <button className="chip" onClick={() => setNewFeel("")}>+ New feel</button>
+                : <form style={{ display: "inline-flex" }} onSubmit={(e) => { e.preventDefault(); createFeel(); }}>
+                    <input className="field" style={{ height: 34, fontSize: 15, width: 150 }} value={newFeel} onChange={(e) => setNewFeel(e.target.value)} autoFocus maxLength={32} placeholder="Feel name" aria-label="New feel name" onBlur={createFeel} />
+                  </form>)}
+              {!editFeels && shownFeels.length === 0 && <span className="muted" style={{ fontSize: 14 }}>None yet. Feels feed the Feel filter and Home shelves.</span>}
+            </div>
+          </div>
+
+          <div>
+            <div className="stat-head" style={{ marginBottom: 8 }}>
               <span className="section-label" style={{ margin: 0 }}>Themes</span>
               <button className="link" style={{ fontSize: 14 }} onClick={() => setEditThemes(!editThemes)}>{editThemes ? "Done" : shownThemes.length ? "Edit themes" : "Add themes"}</button>
             </div>
             <div className="tag-row">
-              {(editThemes ? themeDefs : themeDefs.filter(([id]) => film.themes.includes(id))).map(([id, label]) => {
+              {(editThemes ? plainDefs : plainDefs.filter(([id]) => film.themes.includes(id))).map(([id, label]) => {
                 const on = film.themes.includes(id);
                 return editThemes
                   ? <button key={id} className={"chip" + (on ? " on" : "")} aria-pressed={on} onClick={() => toggleTheme(id)}>{label}</button>
                   : <span key={id} className="chip theme-chip">{label}</span>;
               })}
-              {editThemes && onAddFeel && (newFeel == null
-                ? <button className="chip" onClick={() => setNewFeel("")}>+ New feel</button>
-                : <form style={{ display: "inline-flex" }} onSubmit={(e) => { e.preventDefault(); createFeel(); }}>
-                    <input className="field" style={{ height: 34, fontSize: 15, width: 150 }} value={newFeel} onChange={(e) => setNewFeel(e.target.value)} autoFocus maxLength={32} placeholder="Feel name" aria-label="New feel name" onBlur={createFeel} />
-                  </form>)}
-              {!editThemes && shownThemes.length === 0 && <span className="muted" style={{ fontSize: 14 }}>None yet. Themes and feels feed the filters and Home shelves.</span>}
+              {!editThemes && shownThemes.length === 0 && <span className="muted" style={{ fontSize: 14 }}>None yet. Themes feed the filters and Home shelves.</span>}
             </div>
           </div>
 
