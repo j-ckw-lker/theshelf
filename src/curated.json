@@ -57,7 +57,15 @@
   "The Apartment|1960",
   "Sunset Boulevard|1950",
   "Sabrina|1954",
-  "Moonstruck|1987"
+  "Moonstruck|1987",
+  "JFK|1991",
+  "Casablanca|1942",
+  "Oppenheimer|2023",
+  "The Long Goodbye|1973",
+  "The Big Chill|1983",
+  "Mean Streets|1973",
+  "Paper Moon|1973",
+  "Almost Famous|2000"
  ],
  "adrenaline": [
   "Mad Max: Fury Road|2015",
@@ -89,7 +97,25 @@
   "Uncut Gems|2019",
   "Whiplash|2014",
   "Crank|2006",
-  "Speed|1994"
+  "Speed|1994",
+  "Aliens|1986",
+  "Mad Max 2|1981",
+  "Mad Max|1979",
+  "Face/Off|1997",
+  "Hard Target|1993",
+  "Mission: Impossible – Fallout|2018",
+  "Mission: Impossible – Ghost Protocol|2011",
+  "Mission: Impossible – Rogue Nation|2015",
+  "Mission: Impossible – Dead Reckoning|2023",
+  "Sisu|2022",
+  "Prey|2022",
+  "The Bourne Supremacy|2004",
+  "The Bourne Ultimatum|2007",
+  "Casino Royale|2006",
+  "Con Air|1997",
+  "The Terminator|1984",
+  "A Better Tomorrow|1986",
+  "Enter the Dragon|1973"
  ],
  "sensory": [
   "Mandy|2018",
@@ -113,7 +139,25 @@
   "Sinners|2025",
   "Nope|2022",
   "Ghost in the Shell|1995",
-  "Tokyo Drifter|1966"
+  "Tokyo Drifter|1966",
+  "Apocalypse Now|1979",
+  "Pan's Labyrinth|2006",
+  "Princess Mononoke|1997",
+  "Nosferatu|2024",
+  "The Northman|2022",
+  "Avatar|2009",
+  "Avatar: The Way of Water|2022",
+  "Excalibur|1981",
+  "Dreams|1990",
+  "The Red Shoes|1948",
+  "The Umbrellas of Cherbourg|1964",
+  "Chungking Express|1994",
+  "La La Land|2016",
+  "Deep Red|1975",
+  "Guillermo del Toro's Pinocchio|2022",
+  "Close Encounters of the Third Kind|1977",
+  "PlayTime|1967",
+  "All That Jazz|1979"
  ],
  "mind": [
   "Inception|2010",
@@ -132,7 +176,13 @@
   "Brazil|1985",
   "The Parallax View|1974",
   "Mulholland Drive|2001",
-  "Twelve Monkeys|1995"
+  "Twelve Monkeys|1995",
+  "Oldboy|2003",
+  "The Game|1997",
+  "Total Recall|1990",
+  "The Cabin in the Woods|2011",
+  "Watchmen|2009",
+  "Gone Girl|2014"
  ],
  "trippy": [
   "Altered States|1980",
@@ -153,7 +203,10 @@
   "Antichrist|2009",
   "Satyricon|1969",
   "Juliet of the Spirits|1965",
-  "The Hourglass Sanatorium|1973"
+  "The Hourglass Sanatorium|1973",
+  "Dreams|1990",
+  "Tommy|1975",
+  "Pierrot le Fou|1965"
  ],
  "dread": [
   "Hereditary|2018",
@@ -171,7 +224,23 @@
   "Weapons|2025",
   "The Deer Hunter|1978",
   "Schindler's List|1993",
-  "Raging Bull|1980"
+  "Raging Bull|1980",
+  "Nosferatu|2024",
+  "Alien|1979",
+  "The Thing|1982",
+  "The Shining|1980",
+  "The Birds|1963",
+  "Halloween|1978",
+  "Get Out|2017",
+  "The Exorcist III|1990",
+  "The Fog|1980",
+  "The Others|2001",
+  "The Mist|2007",
+  "Psycho|1960",
+  "Late Night with the Devil|2023",
+  "Talk to Me|2022",
+  "Black Christmas|1974",
+  "Alice, Sweet Alice|1976"
  ],
  "comfort": [
   "The Princess Bride|1987",
@@ -212,7 +281,15 @@
   "The Goonies|1985",
   "The Hitchhiker's Guide to the Galaxy|2005",
   "Willy Wonka & the Chocolate Factory|1971",
-  "Charade|1963"
+  "Charade|1963",
+  "E.T. the Extra-Terrestrial|1982",
+  "Star Wars|1977",
+  "The Empire Strikes Back|1980",
+  "Return of the Jedi|1983",
+  "The Mummy|1999",
+  "The Shawshank Redemption|1994",
+  "The Martian|2015",
+  "Spider-Man 2|2004"
  ],
  "quotable": [
   "The Big Lebowski|1998",
@@ -236,7 +313,16 @@
   "Wet Hot American Summer|2001",
   "National Lampoon's Vacation|1983",
   "Animal House|1978",
-  "The Mask|1994"
+  "The Mask|1994",
+  "Wayne's World 2|1993",
+  "Forgetting Sarah Marshall|2008",
+  "Weird Science|1985",
+  "Risky Business|1983",
+  "Snakes on a Plane|2006",
+  "The 'Burbs|1989",
+  "The Life Aquatic with Steve Zissou|2004",
+  "Innerspace|1987",
+  "Kingsman: The Secret Service|2014"
  ],
  "darkcomedy": [
   "Triangle of Sadness|2022",
@@ -251,7 +337,17 @@
   "Mars Attacks!|1996",
   "Fargo|1996",
   "Beau Is Afraid|2023",
-  "How to Get Ahead in Advertising|1989"
+  "How to Get Ahead in Advertising|1989",
+  "The Cabin in the Woods|2011",
+  "The 'Burbs|1989",
+  "The Trouble with Harry|1955",
+  "Re-Animator|1985",
+  "Creepshow|1982",
+  "Trick 'r Treat|2007",
+  "Blood Simple|1984",
+  "Parasite|2019",
+  "One Battle After Another|2025",
+  "The People Under the Stairs|1991"
  ],
  "absurd": [
   "Hundreds of Beavers|2022",
@@ -274,7 +370,16 @@
   "Airplane!|1980",
   "Zoolander|2001",
   "Fantastic Mr. Fox|2009",
-  "Vampire's Kiss|1988"
+  "Vampire's Kiss|1988",
+  "Face/Off|1997",
+  "Con Air|1997",
+  "Snakes on a Plane|2006",
+  "The Life Aquatic with Steve Zissou|2004",
+  "Re-Animator|1985",
+  "Super Mario Bros.|1993",
+  "As the Gods Will|2014",
+  "Fudoh: The New Generation|1996",
+  "Violent Night|2022"
  ],
  "slowburn": [
   "Stalker|1979",
@@ -305,7 +410,18 @@
   "The Thin Red Line|1998",
   "Roma|1972",
   "Black Narcissus|1947",
-  "Onibaba|1964"
+  "Onibaba|1964",
+  "The Long Goodbye|1973",
+  "The Exorcist III|1990",
+  "The Others|2001",
+  "Blood Simple|1984",
+  "Rear Window|1954",
+  "Vertigo|1958",
+  "Marnie|1964",
+  "Diabolique|1955",
+  "Exotica|1994",
+  "Shadow of a Doubt|1943",
+  "Seven Samurai|1954"
  ],
  "gutpunch": [
   "Aftersun|2022",
@@ -323,7 +439,18 @@
   "Raging Bull|1980",
   "Y Tu Mamá También|2001",
   "Roma|1972",
-  "La Strada|1954"
+  "La Strada|1954",
+  "Oppenheimer|2023",
+  "Pan's Labyrinth|2006",
+  "The Red Shoes|1948",
+  "The Umbrellas of Cherbourg|1964",
+  "Oldboy|2003",
+  "La Haine|1995",
+  "A Star Is Born|2018",
+  "The Irishman|2019",
+  "Godzilla Minus One|2023",
+  "Carlito's Way|1993",
+  "Bullet in the Head|1990"
  ],
  "paranoid": [
   "Blow Out|1981",
@@ -340,7 +467,15 @@
   "They Live|1988",
   "Zodiac|2007",
   "Shutter Island|2010",
-  "Rosemary's Baby|1968"
+  "Rosemary's Baby|1968",
+  "JFK|1991",
+  "The Game|1997",
+  "Rear Window|1954",
+  "The Manchurian Candidate|2004",
+  "The Invasion|2007",
+  "North by Northwest|1959",
+  "Saboteur|1942",
+  "Infernal Affairs|2002"
  ],
  "neon": [
   "Body Heat|1981",
@@ -356,6 +491,14 @@
   "Dressed to Kill|1980",
   "Taxi Driver|1976",
   "Heat|1995",
-  "Blade Runner|1982"
+  "Blade Runner|1982",
+  "Mean Streets|1973",
+  "Carlito's Way|1993",
+  "Ms .45|1981",
+  "Point Blank|1967",
+  "Dirty Harry|1971",
+  "Scarface|1983",
+  "Strange Darling|2023",
+  "Joker|2019"
  ]
 }
