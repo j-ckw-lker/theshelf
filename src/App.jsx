@@ -2469,6 +2469,18 @@ const toggleThemeOf = (film, id, onUpdate) => {
   else onUpdate(film.key, { themesAdd: [...u.add, id] });
 };
 
+// The title as the Home picker shows it: the film's own logo over the banner, plain bold type when there isn't one.
+function FilmTitle({ film }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <h1 className="film-title">
+      {film.logo && !failed
+        ? <img src={img(film.logo, "w500")} alt={film.name} onError={() => setFailed(true)} />
+        : <span>{film.name}</span>}
+    </h1>
+  );
+}
+
 function FilmPage({ nav = "in", below = false, onPeek, wanted, deckItem, deckDays = 7, onDeckToggle, film, films, ix, onNight, onBuildAround, allTags, backLabel, onBack, onOpen, onPerson, onUpdate, onLog, onUnlog, onRemove, onPicker, onAddTag, onRemoveTag, onEditCopy, onEditDetails, themeDefs = ALL_THEMES, onAddFeel }) {
   const [note, setNote] = useState(film.note);
   const [newTag, setNewTag] = useState(null);
@@ -2525,6 +2537,7 @@ function FilmPage({ nav = "in", below = false, onPeek, wanted, deckItem, deckDay
           {film.backdrop && <Banner key={film.backdrop} path={film.backdrop} pos={film.backdropPos} />}
           {film.tmdb && <button className="icon-btn glass banner-edit" onClick={() => onPicker("banner")} aria-label="Change banner"><Icon d={I.image} size={17} sw={2} /></button>}
           <button className="back" onClick={onBack}><Icon d={I.back} size={20} sw={2.4} /><span>{backLabel}</span></button>
+          <FilmTitle key={film.key} film={film} />
         </div>
 
         <div className="film-head">
@@ -2532,7 +2545,6 @@ function FilmPage({ nav = "in", below = false, onPeek, wanted, deckItem, deckDay
             <Poster path={film.posterPath} title={film.name} eager low={["w92", "w185"]} />
           </button>
           <div style={{ minWidth: 0, paddingBottom: 2 }}>
-            <h1>{film.name}</h1>
             {film.directors.length > 0 && (
               <button className="who" onClick={() => onPerson(film.directors[0])}>
                 {peopleLabel(film.directors)}<Icon d={I.chev} size={13} sw={2.4} />
